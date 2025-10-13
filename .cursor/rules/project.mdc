@@ -1,0 +1,61 @@
+---
+alwaysApply: true
+---
+# AI Rules for {app-name}
+
+Monolithic Django 5 + PostgreSQL 16 application serving both frontend and backend.
+Uses Django Templates with HTMX and optionally Alpine.js for interactivity.
+
+## Tech Stack
+
+- Python 3.12
+- Django 5
+- PostgreSQL 16
+- HTMX
+- Alpine.js *(optional)*
+- Tailwind CSS 4
+- Leaflet.js
+
+## Project Structure
+
+When introducing changes, always follow the structure below:
+
+- `./pathie/pathie/` – main Django app with settings, URLs, and views
+- `./pathie/apps/` – feature-based Django apps (e.g. `users`, `routes`, `maps`)
+- `./pathie/apps/templates/` – Django templates for server-side rendering
+- `./pathie/apps/static/` – static files (CSS, JS, images)
+- `./pathie/apps/static/js/` – scripts (HTMX snippets, Alpine components)
+- `./pathie/apps/static/css/` – Tailwind styles
+- `./pathie/apps/models.py` – ORM models for each app
+- `./pathie/apps/views.py` – views and logic
+- `./pathie/apps/forms.py` – Django forms and validations
+- `./pathie/apps/urls.py` – app-specific routes
+- `./pathie/manage.py` – Django management CLI
+- `./pathie/pyproject.toml` – project dependencies
+
+Update this section if the structure changes.
+
+## Coding Practices
+
+### Guidelines for clean Django code
+
+- Use **type annotations** consistently across all modules.
+- Keep views lean — move logic into services or model methods.
+- Prefer class-based views (CBVs) for consistency.
+- Use Django ORM efficiently; avoid unnecessary queries.
+- Cache rendered pages or querysets when possible.
+- Validate data at the form or serializer level.
+- Always sanitize user input in templates (autoescape on).
+- Use environment variables for secrets and configuration.
+- Follow **PEP8** and Django coding conventions.
+- Write small, reusable template components (partials).
+- Keep migrations atomic and descriptive.
+
+### Tooling & Quality
+
+- Use **ruff** for linting, formatting, and enforcing code style.
+- Fix all warnings raised by ruff before committing.
+- Maintain clear and self-documenting function and variable names.
+- Keep imports clean and sorted automatically via ruff rules.
+
+---

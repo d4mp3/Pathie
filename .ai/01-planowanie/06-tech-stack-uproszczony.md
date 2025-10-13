@@ -29,7 +29,7 @@ Architektura monolityczna pozwoli skupić się na **walidacji hipotezy produktu*
 | **HTMX** | Dodaje asynchroniczne interakcje (AJAX, partial reloads) bez SPA. | Zapewnia nowoczesne UX bez złożoności Reacta. |
 | **Alpine.js** *(opcjonalnie)* | Lekka warstwa logiki po stronie klienta (np. modale, przełączniki). | Brak konieczności stosowania frameworka JS. |
 | **Tailwind CSS 4** | Framework CSS typu utility-first. | Umożliwia szybkie stylowanie i Mobile-First design. |
-| **Leaflet.js** | Biblioteka mapowa JS. | Interaktywne mapy z minimalną konfiguracją i bez kosztów licencji. |
+| **Django Leaflet** | Biblioteka mapowa JS. | Interaktywne mapy z minimalną konfiguracją i bez kosztów licencji. |
 
 ---
 
