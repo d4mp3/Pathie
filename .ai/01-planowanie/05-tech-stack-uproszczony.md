@@ -1,6 +1,6 @@
-# 🧩 Stack Technologiczny – Pathie (MVP, uproszczony monolit Django)
+# Stack Technologiczny – Pathie (MVP, uproszczony monolit Django)
 
-## 🎯 Cel uproszczenia
+## Cel uproszczenia
 Celem tego wariantu jest **maksymalne skrócenie czasu dostarczenia MVP**, przy zachowaniu:
 - pełnej funkcjonalności wymaganej przez PRD,
 - spójności architektonicznej,
@@ -10,7 +10,7 @@ Architektura monolityczna pozwoli skupić się na **walidacji hipotezy produktu*
 
 ---
 
-## 🖥️ **Frontend + Backend (monolit)**
+## **Frontend + Backend (monolit)**
 
 ### **Framework:** `Django 5`
 **Rola:** Jednolity serwer aplikacji (frontend + backend).
@@ -33,7 +33,7 @@ Architektura monolityczna pozwoli skupić się na **walidacji hipotezy produktu*
 
 ---
 
-## ⚙️ **Warstwa logiki i danych**
+## **Warstwa logiki i danych**
 
 | Komponent | Technologia | Uzasadnienie |
 |------------|--------------|--------------|
@@ -44,7 +44,7 @@ Architektura monolityczna pozwoli skupić się na **walidacji hipotezy produktu*
 
 ---
 
-## 🧠 **Integracje AI i zewnętrzne**
+## **Integracje AI i zewnętrzne**
 
 | Komponent | Technologia | Uzasadnienie |
 |------------|--------------|--------------|

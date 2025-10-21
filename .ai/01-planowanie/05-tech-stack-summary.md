@@ -6,7 +6,7 @@
 
 ---
 
-## 🧰 **Infrastruktura i DevOps**
+## **Infrastruktura i DevOps**
 
 | Element | Technologia | Uzasadnienie |
 |----------|--------------|--------------|
@@ -17,7 +17,7 @@
 
 ---
 
-## 🔐 **Bezpieczeństwo**
+## **Bezpieczeństwo**
 
 - HTTPS wymuszony przez Nginx (Let's Encrypt).
 - Django CSRF i XSS Protection – domyślnie aktywne.
@@ -27,7 +27,7 @@
 
 ---
 
-## 📊 **Korzyści uproszczonego podejścia**
+## **Korzyści uproszczonego podejścia**
 
 | Obszar | Efekt uproszczenia |
 |--------|--------------------|
@@ -39,7 +39,7 @@
 
 ---
 
-## 🚀 **Plan ewolucji po MVP**
+## **Plan ewolucji po MVP**
 
 | Etap | Dodatek | Cel |
 |------|----------|-----|
@@ -50,7 +50,7 @@
 
 ---
 
-## 🧭 **Podsumowanie**
+## **Podsumowanie**
 
 Uproszczony stack Django monolitowy pozwala:
 - **szybko zbudować i zweryfikować MVP,**

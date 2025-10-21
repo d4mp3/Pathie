@@ -61,7 +61,6 @@ Ograniczenia:
 - `route_point_id` — bigint, FK → `route_points(id)`, NOT NULL, UNIQUE, ON DELETE CASCADE
 - `language_code` — varchar(8), NOT NULL, DEFAULT 'pl'
 - `content` — text, NOT NULL, CHECK (char_length(`content`) BETWEEN 2500 AND 5000)
-- `created_by_ai` — boolean, NOT NULL, DEFAULT true
 - `created_at` — timestamptz, NOT NULL, DEFAULT now()
 - `updated_at` — timestamptz, NOT NULL, DEFAULT now()
 

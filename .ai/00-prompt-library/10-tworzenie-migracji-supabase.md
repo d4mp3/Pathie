@@ -41,7 +41,7 @@ Napisz kod SQL kompatybilny z PostgreSQL dla plików migracji Supabase, który:
 - Podczas tworzenia polityk RLS
   - Upewnij się, że polityki obejmują wszystkie istotne scenariusze dostępu (np. select, insert, update, delete) w oparciu o cel tabeli i wrażliwość danych.
   - Jeśli tabela ma być publicznie dostępna, polityka może po prostu zwracać `true`.
-  - Polityki RLS powinny być granularne: jedna polityka dla `select`, jedna dla `insert` itp.) i dla każdej roli supabase (`anon` i `authenticated`). NIE łącz polityk, nawet jeśli funkcjonalność jest taka sama dla obu ról.
+  - Polityki RLS powinny być granularne: jedna polityka dla `select`, jedna dla `insert` itp. i dla każdej roli supabase (`anon` i `authenticated`). NIE łącz polityk, nawet jeśli funkcjonalność jest taka sama dla obu ról.
   - Dołącz komentarze wyjaśniające uzasadnienie i zamierzone zachowanie każdej polityki bezpieczeństwa
 
 Wygenerowany kod SQL powinien być gotowy do produkcji, dobrze udokumentowany i zgodny z najlepszymi praktykami Supabase.
