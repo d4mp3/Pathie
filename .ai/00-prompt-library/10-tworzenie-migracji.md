@@ -8,7 +8,7 @@ Utwórz migracje dla następującego db-plan:
 
 ## Tworzenie pliku migracji
 
-Biorąc pod uwagę kontekst wiadomości użytkownika, utwórz plik migracji bazy danych wewnątrz folderu `postgres/migrations/`.
+Biorąc pod uwagę kontekst wiadomości użytkownika, utwórz plik migracji bazy danych wewnątrz folderu `migrations/postgres/`.
 
 Plik MUSI przestrzegać następującej konwencji nazewnictwa:
 

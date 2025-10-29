@@ -1,0 +1,175 @@
+---
+alwaysApply: true
+---
+
+# DB Rules — Django + PostgreSQL (Hybrid Approach, Cursor Context)
+
+## Kontekst projektu
+
+Projekt korzysta z **Django ORM** do definiowania struktury danych (modele, relacje, kolumny, klucze),
+oraz z **SQL layer** do definiowania niskopoziomowych mechanizmów bazy
+(RLS, triggery, widoki, indeksy niestandardowe, materializacje).
+
+---
+
+## Główna zasada architektoniczna
+
+> **Django ORM** = struktura danych  
+> **SQL layer** = logika bazodanowa, bezpieczeństwo i optymalizacja
+
+W praktyce:
+
+- Django opisuje modele i migracje strukturalne
+- SQL pliki definiują logikę bazy i zasady bezpieczeństwa
+
+---
+
+## Zakres ORM (Django)
+
+Zarządzane przez:
+
+- `models.py`
+- `migrations/`
+- komendy `makemigrations` i `migrate`
+
+ORM odpowiada za:
+
+- tabele, relacje, klucze (`ForeignKey`, `ManyToManyField`, `OneToOneField`)
+- typy danych (`UUIDField`, `ArrayField`, `JSONField`)
+- walidacje i ograniczenia (`unique`, `choices`, `null`)
+- definicje `on_delete`, `default`, `validators`
+- dane startowe (`fixtures`, `loaddata`)
+
+AI powinno:
+
+- używać ORM tylko do definicji struktury
+- **nie generować triggerów, polityk RLS ani widoków w kodzie Django**
+- sugerować SQL tylko wtedy, gdy Django nie obsługuje danego mechanizmu
+
+---
+
+## Zakres SQL layer
+
+Zarządzane przez:
+
+- `migrations/postgres/`
+- migracje Django z `RunSQL`
+- ewentualnie katalog `db_scripts/` dla widoków i polityk
+
+SQL służy do:
+
+- **RLS (Row Level Security)**  
+
+  ```sql
+  ALTER TABLE routes ENABLE ROW LEVEL SECURITY;
+  CREATE POLICY user_can_access_own_routes
+  ON routes
+  USING (user_id = current_setting('app.current_user_id')::bigint);
+  ```
+
+- **Triggery i funkcje PLpgSQL**  
+
+  ```sql
+  CREATE OR REPLACE FUNCTION trg_update_timestamp()
+  RETURNS TRIGGER AS $$
+  BEGIN
+    NEW.updated_at = NOW();
+    RETURN NEW;
+  END;
+  $$ LANGUAGE plpgsql;
+  ```
+
+- **Widoki i materializowane widoki**
+
+  ```sql
+  CREATE MATERIALIZED VIEW route_stats AS
+  SELECT user_id, COUNT(*) AS total_routes FROM routes GROUP BY user_id;
+  ```
+  
+- **Indeksy niestandardowe i constraints**
+
+  ```sql
+  CREATE UNIQUE INDEX idx_unique_active_user_route
+  ON routes (user_id, lower(name))
+  WHERE status = 'active';
+  ```
+
+AI powinno:
+
+- generować pliki .sql do katalogu migrations/sql/
+- używać RunSQL w migracjach Django do ich dołączenia
+- pisać SQL w sposób idempotentny (CREATE OR REPLACE, DROP IF EXISTS)
+
+## Dobre praktyki
+
+**ORM**
+
+- utrzymuj spójność modeli z bazą (makemigrations, migrate)
+- nie powielaj logiki bazy w Pythonie
+- typy niestandardowe implementuj przez Field.db_type()
+- walidacje domenowe trzymaj w warstwie Django, nie w triggerach
+
+**SQL**
+
+- każda zmiana logiczna w bazie = osobny plik .sql
+- testuj triggery i RLS integracyjnie (np. pytest-django)
+- nazwij obiekty konwencyjnie:
+  - rls_<table>_<policy>
+  - trg_<table>_<event>
+  - vw_<view>
+  - mvw_<materialized_view>
+
+## Przykład integracji (migracja)
+
+### migrations/0002_rls_policies.py
+
+```python
+from django.db import migrations
+
+class Migration(migrations.Migration):
+    dependencies = [
+        ('routes', '0001_initial'),
+    ]
+
+    operations = [
+        migrations.RunSQL(
+            open('app/migrations/sql/0002_rls_policies.sql').read()
+        ),
+    ]
+```
+
+## Kontekst sesji (dla RLS)
+
+RLS opiera się na kontekście użytkownika:
+
+```sql
+SET app.current_user_id = '<user_id>';
+```
+
+Backend (Django middleware lub DB wrapper) ustawia tę wartość
+po zalogowaniu użytkownika. Dzięki temu polityki RLS działają dynamicznie.
+
+## Cel podejścia
+
+Hybrydowe podejście łączy czytelność ORM-u Django
+z mocą PostgreSQL w zakresie bezpieczeństwa i logiki domenowej.
+
+Korzyści:
+
+- czysty ORM bez SQL w modelach
+- pełna kontrola nad logiką bazy
+- bezpieczeństwo dzięki RLS
+- lepsza wydajność dzięki widokom i indeksom
+
+## AI Context Hints (dla Cursor)
+
+- Jeśli użytkownik pisze model Django → generuj tylko ORM.
+- Jeśli pojawi się temat RLS / trigger / materialized view / funkcji SQL → zaproponuj plik .sql w migrations/sql/.
+- Jeśli użytkownik chce „dodać logikę po zapisie / update” → zaproponuj trigger SQL, a nie post_save signal w Django.
+- Jeśli użytkownik pyta o logikę kontroli dostępu → zaproponuj RLS (Row Level Security) na poziomie bazy.
+- Jeśli użytkownik chce raport / agregację → zaproponuj widok lub materialized view, nie queryset.
+- Gdy generujesz SQL, dodawaj zawsze:
+  - CREATE OR REPLACE
+  - DROP IF EXISTS
+  - COMMENT ON dla dokumentacji obiektu.
+- Utrzymuj zgodność między ORM a SQL – nie definiuj tej samej kolumny po obu stronach.
