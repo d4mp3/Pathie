@@ -14,7 +14,7 @@ Pathie adresuje te problemy, automatyzując proces tworzenia spersonalizowanych 
 ### 3.1. System Kont Użytkowników
 * Rejestracja użytkownika za pomocą adresu e-mail i hasła.
 * Logowanie do systemu za pomocą adresu e-mail i hasła.
-* Logowanie i rejestracja za pośrednictwem konta Google (OAuth).
+* Logowanie i rejestracja.
 * Możliwość wylogowania się z aplikacji.
 * Dostęp do funkcji generowania i zapisywania tras wymaga bycia zalogowanym.
 
@@ -51,7 +51,7 @@ Pathie adresuje te problemy, automatyzując proces tworzenia spersonalizowanych 
 
 ## 4. Granice produktu
 ### 4.1. Funkcjonalności w zakresie MVP
-* System kont użytkowników (rejestracja/logowanie przez e-mail i Google).
+* System kont użytkowników (rejestracja/logowanie przez e-mail).
 * Generowanie tras przez AI na podstawie tagów i opisu tekstowego (do 7 punktów).
 * Manualne tworzenie tras z wyszukiwarką miejsc i automatyczną optymalizacją kolejności (do 10 punktów).
 * Tworzenie spersonalizowanych opisów miejsc.
@@ -97,14 +97,7 @@ Pathie adresuje te problemy, automatyzując proces tworzenia spersonalizowanych 
     3.  W przypadku podania błędnego e-maila lub hasła, wyświetlany jest stosowny komunikat.
 
 ---
-* ID: US-003
-* Tytuł: Rejestracja i logowanie za pomocą konta Google
-* Opis: Jako nowy lub powracający użytkownik, chcę móc zarejestrować się lub zalogować za pomocą mojego konta Google, aby przyspieszyć proces i nie musieć pamiętać kolejnego hasła.
-* Kryteria akceptacji:
-    1.  Na stronie logowania/rejestracji znajduje się przycisk "Zaloguj się z Google".
-    2.  Kliknięcie przycisku inicjuje proces autoryzacji OAuth z Google.
-    3.  Po pomyślnej autoryzacji, jeśli użytkownik nie istnieje, tworzone jest nowe konto.
-    4.  Użytkownik jest zalogowany i przekierowany na stronę główną.
+
 
 ---
 * ID: US-004

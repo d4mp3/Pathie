@@ -51,7 +51,7 @@ Links to planning docs (Polish):
   - PostgreSQL 16 targeted for production
   - Django ORM; Django cache for simple caching
 - Auth
-  - Django auth; planned Google OAuth via `django-allauth`
+  - Django auth (Email/User + Password)
 - AI and external services (planned)
   - OpenRouter.ai (LLM for routes and narratives)
   - OpenRouteService (route optimization)
@@ -114,7 +114,7 @@ Open `http://127.0.0.1:8000/` in your browser. Admin at `http://127.0.0.1:8000/a
 
 Notes:
 - Local dev uses SQLite out-of-the-box. For production, configure PostgreSQL 16 using environment variables and update Django settings accordingly.
-- External integrations (Google OAuth, OpenRouter.ai, OpenRouteService) require API keys/config that are not set up in this repository yet.
+- External integrations (OpenRouter.ai, OpenRouteService) require API keys/config that are not set up in this repository yet.
 
 ## 5. Available scripts
 
@@ -142,7 +142,7 @@ pytest
 ## 6. Project scope
 
 ### MVP
-- Authentication: email/password signup/login, Google OAuth, logout; key actions require login.
+- Authentication: email/password signup/login, logout; key actions require login.
 - AI-generated routes:
   - 1–3 interest tags + optional 1k–10k char description
   - Up to 7 points per route
