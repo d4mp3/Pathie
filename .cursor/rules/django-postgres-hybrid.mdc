@@ -1,0 +1,98 @@
+# Django PostgreSQL Hybrid Architecture Rules
+
+This document defines the architectural patterns and workflows for the Hybrid Django ORM + PostgreSQL project. Use this as a reference for maintaining consistency across the codebase.
+
+## 1. Architectural Patterns
+
+### Hybrid Logic Separation
+-   **Structure (Python/Django)**: Use Django Models solely for defining database structure (tables, fields, relationships).
+-   **Logic (SQL)**: Push business logic that involves data integrity, security (RLS), or heavy calculation into the Database layer (Triggers, RLS Policies, Check Constraints, Indexes).
+-   **Why?**: This ensures security (RLS cannot be bypassed by application code) and performance.
+
+### File Organization
+-   **Models**: Split `models.py` into `core/models/<model_name>.py`. Ensure `__init__.py` imports all models.
+-   **SQL**: Store raw SQL in `core/migrations/sql/<name>.sql`.
+-   **Services**: Place complex application logic in `core/services/`.
+
+## 2. Implementation Workflows
+
+### Defining New Models
+1.  Create the model in `core/models/`.
+2.  Define fields using standard Django types.
+3.  **Do not** add complex `save()` method overrides for logic that belongs in Triggers.
+4.  Run `makemigrations`.
+
+### Implementing SQL Logic (RLS/Triggers)
+1.  Create a new SQL file in `core/migrations/sql/`.
+2.  Write idempotent SQL (`CREATE OR REPLACE`, `DROP IF EXISTS`).
+3.  Create a Django migration using `migrations.RunSQL` to apply the file.
+4.  **Important**: Always reference the user via `current_setting('app.user_id', true)::bigint`.
+
+### Middleware
+-    Ensure `PostgreSQLRLSMiddleware` is active to inject `app.user_id` into the session.
+
+## 3. Type Safety & Generation (MyPy)
+
+We prioritize type safety. The database schema is the ultimate source of truth, but `django-stubs` bridges it to Python.
+
+### Type Generation Workflow
+To ensure `mypy` correctly recognizes database types (especially after schema changes):
+
+1.  **Sync Models**: Ensure Django models exactly match the DB schema.
+2.  **Generate Stubs**: If using custom SQL types or complex raw queries, create explicitly typed wrappers.
+3.  **Validation Command**:
+    Run the following to verify type consistency:
+    ```bash
+    mypy .
+    ```
+
+### Generating Types from DB (If needed for external tools)
+If strict syncing is required (e.g. for generating TypeDicts from raw tables):
+-   Use `python manage.py inspectdb > core/models/legacy.py` as a temporary reference.
+-   Ideally, trust `django-stubs` inference from the defined Models.
+
+---
+
+## 4. Environment Configuration & Validation
+
+Use `django-environ` to validate environment variables at startup.
+
+### Environment Schema (`settings.py`)
+Define and cast all environment variables in `settings.py`. Fail early if variables are missing.
+
+```python
+import environ
+import os
+
+env = environ.Env(
+    # set casting, default value
+    DEBUG=(bool, False)
+)
+
+# Reading .env file
+environ.Env.read_env(os.path.join(BASE_DIR, '.env'))
+
+# Usage (The "Analogy" to ImportMetaEnv)
+DEBUG = env('DEBUG')
+SECRET_KEY = env('SECRET_KEY')
+DATABASE_URL = env.db()  # automatically parses DATABASE_URL
+```
+
+### Required Variables (`.env`)
+Maintain a `.env` file (git-ignored) and a `.env.example` (committed).
+
+```bash
+# Core
+DEBUG=on
+SECRET_KEY=your-secret-key-val
+ALLOWED_HOSTS=localhost,127.0.0.1
+
+# Database
+DATABASE_URL=postgres://user:password@db:5432/pathie_dev
+
+# External Services (if applicable)
+# OPENAI_API_KEY=...
+```
+
+---
+**Note**: This file complements the Implementation Plan. While the Plan lists *what* to build, this Rule File defines *how* to build and maintain it.

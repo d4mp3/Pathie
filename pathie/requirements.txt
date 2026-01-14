@@ -12,6 +12,8 @@ django==5.2.7
     #   django-stubs
     #   django-stubs-ext
     #   django-tailwind
+django-environ==0.12.0
+    # via backend (pyproject.toml)
 django-htmx==1.26.0
     # via backend (pyproject.toml)
 django-leaflet==0.32.0

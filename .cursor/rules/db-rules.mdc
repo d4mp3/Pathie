@@ -14,7 +14,7 @@ oraz z **SQL layer** do definiowania niskopoziomowych mechanizmów bazy
 
 ## Główna zasada architektoniczna
 
-> **Django ORM** = struktura danych  
+> **Django ORM** = struktura danych
 > **SQL layer** = logika bazodanowa, bezpieczeństwo i optymalizacja
 
 W praktyce:
