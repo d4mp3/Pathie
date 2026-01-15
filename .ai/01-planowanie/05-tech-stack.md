@@ -1,62 +1,55 @@
-# Stack Technologiczny - Pathie (MVP)
+# Stack Technologiczny – Pathie (MVP, uproszczony monolit Django)
 
-### **Frontend**
+## Cel uproszczenia
+Celem tego wariantu jest **maksymalne skrócenie czasu dostarczenia MVP**, przy zachowaniu:
+- pełnej funkcjonalności wymaganej przez PRD,
+- spójności architektonicznej,
+- bezpieczeństwa i stabilności wdrożenia.
 
-* **Framework:** **React 19**
-    * **Opis:** Aplikacja kliencka w architekturze SPA (Single Page Application).
+Architektura monolityczna pozwoli skupić się na **walidacji hipotezy produktu**
 
-* **Język:** **TypeScript 5**
-    * **Opis:** Statyczne typowanie dla całego kodu frontendowego.
+---
 
-* **Narzędzie budowania:** **Vite**
-    * **Opis:** Nowoczesny bundler i serwer deweloperski.
+## **Frontend + Backend (monolit)**
 
-* **Styling:** **Tailwind CSS 4**
-    * **Opis:** Framework CSS typu utility-first.
+### **Framework:** `Django 5`
+**Rola:** Jednolity serwer aplikacji (frontend + backend).
+**Uzasadnienie:**
+- Wbudowany ORM, system autoryzacji i routing.
+- Brak konieczności utrzymywania osobnego serwera API.
+- Szybkie iteracje dzięki Django Templates i HTMX.
 
-* **Biblioteki dodatkowe:**
-    * **Routing:** **React Router** - standard do nawigacji po stronie klienta.
-    * **Mapy:** **React Leaflet** - integracja popularnej biblioteki map Leaflet.js z Reactem.
-    * **Komponenty UI:** **Shadcn/ui** (lub podobne) - baza gotowych, dostępnych komponentów UI.
+---
 
-### **Backend**
+### **Warstwa prezentacji (frontend)**
 
-* **Framework:** **Django 5**
-    * **Opis:** Główna logika aplikacji, API i zarządzanie użytkownikami.
+| Technologia | Opis | Uzasadnienie |
+|--------------|------|--------------|
+| **Django Templates** | System renderowania HTML po stronie serwera. | Pozwala na prosty, szybki rozwój bez build stepu. |
+| **HTMX** | Dodaje asynchroniczne interakcje (AJAX, partial reloads) bez SPA. | Zapewnia nowoczesne UX bez złożoności Reacta. |
+| **Alpine.js** *(opcjonalnie)* | Lekka warstwa logiki po stronie klienta (np. modale, przełączniki). | Brak konieczności stosowania frameworka JS. |
+| **Tailwind CSS 4** | Framework CSS typu utility-first. | Umożliwia szybkie stylowanie i Mobile-First design. |
+| **Django Leaflet** | Biblioteka mapowa JS. | Interaktywne mapy z minimalną konfiguracją i bez kosztów licencji. |
 
-* **API:** **Django REST Framework (DRF)**
-    * **Opis:** Warstwa do budowy REST API dla komunikacji z frontendem.
+---
 
-* **Baza Danych:** **PostgreSQL 16**
-    * **Opis:** Relacyjna baza danych.
+## **Warstwa logiki i danych**
 
-* **Optymalizacja tras:** **OpenRouteService API**
-    * **Opis:** Zewnętrzne API do obliczania i optymalizacji kolejności punktów na trasie.
+| Komponent | Technologia | Uzasadnienie |
+|------------|--------------|--------------|
+| **Baza danych** | **PostgreSQL 16** | Stabilna, open-source’owa baza relacyjna z obsługą danych przestrzennych (PostGIS w przyszłości). |
+| **ORM i modele** | **Django ORM** | Umożliwia szybkie definiowanie modeli tras, punktów, użytkowników i opisów. |
+| **Uwierzytelnianie** | **Django Auth** | Obsługuje zarówno logowanie lokalne, jak i przez Google, zgodnie z PRD. |
+| **Buforowanie danych** | **Django cache (local memory lub file-based)** | Wystarczające do cache’owania tras i opisów w MVP (bez Redis). |
 
-### **Sztuczna Inteligencja (AI)**
+---
 
-* **Dostawca Modeli:** **OpenRouter.ai**
-    * **Opis:** Brama (gateway) do różnych modeli językowych (LLM).
+## **Integracje AI i zewnętrzne**
 
-### **Zadania Asynchroniczne**
+| Komponent | Technologia | Uzasadnienie |
+|------------|--------------|--------------|
+| **Generowanie tras i opisów** | **OpenRouter.ai API** | Dostarcza modele LLM do generowania tras i narracji. |
+| **Optymalizacja tras** | **OpenRouteService API** | Zewnętrzne API do obliczania kolejności punktów i dystansu. |
+| **Źródła danych** | **Wikipedia API, OpenStreetMap** | Zasoby do wzbogacania opisów punktów. |
 
-* **Framework:** **Celery**
-    * **Opis:** Biblioteka do uruchamiania zadań w tle.
-
-* **Broker wiadomości:** **Redis**
-    * **Opis:** Wewnątrz-pamięciowa baza danych używana jako pośrednik wiadomości dla Celery.
-
-### **Infrastruktura i DevOps**
-
-* **Hosting:** **Prywatny serwer VPS (np. DigitalOcean, Hetzner, OVH)**
-    * **Opis:** Dedykowana maszyna wirtualna do hostowania aplikacji.
-
-* **Konteneryzacja:** **Docker & Docker Compose**
-    * **Opis:** Uruchomienie wszystkich części aplikacji (frontend, backend, baza danych, Redis) w osobnych kontenerach.
-
-* **CI/CD:** **GitHub Actions**
-    * **Opis:** Zautomatyzowane procesy testowania i wdrażania.
-
-* **Serwer Web/Proxy:** **Nginx**
-    * **Opis:** Używany jako reverse proxy dla aplikacji Django oraz do serwowania statycznych plików frontendu.
-    * **Uzasadnienie:** Wysoka wydajność, standard branżowy.
+---

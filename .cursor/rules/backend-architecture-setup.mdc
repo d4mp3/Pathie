@@ -1,4 +1,6 @@
-# Django PostgreSQL Hybrid Architecture Rules
+# Backend Architecture & Setup Rules
+# Use this file for: Project structure, Environment setup, Type generation, General Architecture.
+# See `backend-db-coding-patterns.mdc` for detailed coding patterns for Models and SQL.
 
 This document defines the architectural patterns and workflows for the Hybrid Django ORM + PostgreSQL project. Use this as a reference for maintaining consistency across the codebase.
 

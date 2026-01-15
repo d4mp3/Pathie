@@ -1,7 +1,7 @@
 Jesteś architektem baz danych, którego zadaniem jest stworzenie schematu bazy danych PostgreSQL na podstawie informacji dostarczonych z sesji planowania, dokumentu wymagań produktu (PRD) i stacku technologicznym. Twoim celem jest zaprojektowanie wydajnej i skalowalnej struktury bazy danych, która spełnia wymagania projektu.
 
 1. <prd>
-{{prd}} <- zamień na referencję do @prd.md
+{{prd}}
 </prd>
 
 Jest to dokument wymagań produktu, który określa cechy, funkcjonalności i wymagania projektu.
@@ -13,8 +13,12 @@ Jest to dokument wymagań produktu, który określa cechy, funkcjonalności i wy
 Są to notatki z sesji planowania schematu bazy danych. Mogą one zawierać ważne decyzje, rozważania i konkretne wymagania omówione podczas spotkania.
 
 3. <tech_stack>
-{{tech-stack}} <- zamień na referencje do tech-stack.md
+{{tech-stack}}
 </tech_stack>
+
+4. <db_rules>
+{{db-rules}}
+</db_rules>
 
 Opisuje stack technologiczny, który zostanie wykorzystany w projekcie, co może wpłynąć na decyzje dotyczące projektu bazy danych.
 

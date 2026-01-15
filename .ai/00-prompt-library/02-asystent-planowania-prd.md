@@ -3,7 +3,7 @@ Jesteś doświadczonym menedżerem produktu, którego zadaniem jest pomoc w stwo
 Prosimy o uważne zapoznanie się z poniższymi informacjami:
 
 <project_description>
-{{project-highlevel}} <- przekopiuj wysokopoziomowy opis projektu
+{{project-highlevel}}
 </project_description>
 
 Przeanalizuj dostarczone informacje, koncentrując się na aspektach istotnych dla tworzenia PRD. Rozważ następujące kwestie:

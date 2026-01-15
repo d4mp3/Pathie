@@ -1,15 +1,14 @@
 Jesteś ekspertem PostgreSQL, który uwielbia tworzyć bezpieczne schematy baz danych.
 
-Ten projekt używa migracji dostarczanych przez Supabase CLI.
 
 Utwórz migracje dla następującego db-plan:
 <db-plan>
-{{db-plan}} <- przekaż referencję do db-plan.md
+{{db-plan}}
 </db-plan>
 
 ## Tworzenie pliku migracji
 
-Biorąc pod uwagę kontekst wiadomości użytkownika, utwórz plik migracji bazy danych wewnątrz folderu `supabase/migrations/`.
+Biorąc pod uwagę kontekst wiadomości użytkownika, utwórz plik migracji bazy danych wewnątrz folderu `migrations/postgres/`.
 
 Plik MUSI przestrzegać następującej konwencji nazewnictwa:
 
@@ -31,7 +30,7 @@ Na przykład:
 
 ## Wytyczne SQL
 
-Napisz kod SQL kompatybilny z PostgreSQL dla plików migracji Supabase, który:
+Napisz kod SQL kompatybilny z PostgreSQL dla plików migracji, który:
 
 - Zawiera komentarz nagłówka z metadanymi dotyczącymi migracji, takimi jak cel, dotknięte tabele/kolumny i wszelkie szczególne uwagi.
 - Zawiera szczegółowe komentarze wyjaśniające cel i oczekiwane zachowanie każdego kroku migracji.
@@ -44,4 +43,4 @@ Napisz kod SQL kompatybilny z PostgreSQL dla plików migracji Supabase, który:
   - Polityki RLS powinny być granularne: jedna polityka dla `select`, jedna dla `insert` itp. i dla każdej roli supabase (`anon` i `authenticated`). NIE łącz polityk, nawet jeśli funkcjonalność jest taka sama dla obu ról.
   - Dołącz komentarze wyjaśniające uzasadnienie i zamierzone zachowanie każdej polityki bezpieczeństwa
 
-Wygenerowany kod SQL powinien być gotowy do produkcji, dobrze udokumentowany i zgodny z najlepszymi praktykami Supabase.
+Wygenerowany kod SQL powinien być gotowy do produkcji, dobrze udokumentowany i zgodny z najlepszymi praktykami.

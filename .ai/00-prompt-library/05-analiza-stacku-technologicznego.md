@@ -1,5 +1,5 @@
 <tech-stack>
-{{tech-stack}} <- wprowadź tutaj opis swojego stacku
+{{tech-stack}}
 </tech-stack>
 
 Dokonaj krytycznej lecz rzeczowej analizy czy <tech-stack> odpowiednio adresuje potrzeby @prd.md. Rozważ następujące pytania:

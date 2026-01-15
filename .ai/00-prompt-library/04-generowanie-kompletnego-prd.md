@@ -1,11 +1,11 @@
 Jesteś doświadczonym menedżerem produktu, którego zadaniem jest stworzenie kompleksowego dokumentu wymagań produktu (PRD) w oparciu o poniższe opisy:
 
 <project_description>
-{{project-description}} <- wprowadź pomysł na MVP
+{{project-description}}
 </project_description>
 
 <project_details>
-{{project-details}} <- wprowadź podsumowanie sesji planistycznej
+{{project-details}}
 </project_details>
 
 Wykonaj następujące kroki, aby stworzyć kompleksowy i dobrze zorganizowany dokument:

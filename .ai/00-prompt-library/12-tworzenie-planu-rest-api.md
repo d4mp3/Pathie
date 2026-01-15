@@ -1,13 +1,13 @@
 <db-plan>
-{{db-plan}} <- zamień na referencję do @db-plan.md
+{{db-plan}}
 </db-plan>
 
 <prd>
-{{prd}} <- zamień na referencję do @prd.md
+{{prd}}
 </prd>
 
 <tech-stack>
-{{tech-stack}} <- zamień na referencję do @tech-stack.md
+{{tech-stack}}
 </tech-stack>
 
 Jesteś doświadczonym architektem API, którego zadaniem jest stworzenie kompleksowego planu API REST. Twój plan będzie oparty na podanym schemacie bazy danych, dokumencie wymagań produktu (PRD) i stacku technologicznym podanym powyżej. Uważnie przejrzyj dane wejściowe i wykonaj następujące kroki:

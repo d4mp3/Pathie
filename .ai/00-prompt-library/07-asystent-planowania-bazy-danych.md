@@ -3,11 +3,11 @@ Jesteś asystentem AI, którego zadaniem jest pomoc w zaplanowaniu schematu bazy
 Prosimy o uważne zapoznanie się z poniższymi informacjami:
 
 <product_requirements>
-{{prd}} <- zamień na referencję do @prd.md
+{{prd}}
 </product_requirements>
 
 <tech_stack>
-{{tech-stack}} <- zamień na referencję do @tech-stack.md
+{{tech-stack}}
 </tech_stack>
 
 Przeanalizuj dostarczone informacje, koncentrując się na aspektach istotnych dla projektowania bazy danych. Rozważ następujące kwestie:

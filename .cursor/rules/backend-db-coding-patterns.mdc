@@ -2,7 +2,8 @@
 alwaysApply: false
 ---
 
-# DB Rules — Django + PostgreSQL (Hybrid Approach, Cursor Context)
+# DB Coding Patterns — Django + PostgreSQL
+# Use this file for: Detailed SQL implementation, RLS, Triggers, and Django Model definitions.
 
 ## Kontekst projektu
 
@@ -28,8 +29,8 @@ W praktyce:
 
 Zarządzane przez:
 
-- `models.py`
-- `migrations/`
+- `core/models.py`
+- `core/migrations/`
 - komendy `makemigrations` i `migrate`
 
 ORM odpowiada za:
@@ -52,9 +53,9 @@ AI powinno:
 
 Zarządzane przez:
 
-- `migrations/postgres/`
+- `core/migrations/postgres/`
 - migracje Django z `RunSQL`
-- ewentualnie katalog `db_scripts/` dla widoków i polityk
+- ewentualnie katalog `core/db_scripts/` dla widoków i polityk
 
 SQL służy do:
 
@@ -166,7 +167,7 @@ SQL służy do:
 
 AI powinno:
 
-- generować pliki .sql do katalogu migrations/sql/
+- generować pliki .sql do katalogu core/migrations/sql/
 - używać RunSQL w migracjach Django do ich dołączenia
 - pisać SQL w sposób idempotentny (CREATE OR REPLACE, DROP IF EXISTS)
 
@@ -195,7 +196,7 @@ AI powinno:
 
 ## Przykład integracji (migracja)
 
-### migrations/0002_rls_policies.py
+### core/migrations/0002_rls_policies.py
 
 ```python
 from django.db import migrations
@@ -207,7 +208,7 @@ class Migration(migrations.Migration):
 
     operations = [
         migrations.RunSQL(
-            open('app/migrations/sql/0002_rls_policies.sql').read()
+            open('core/migrations/sql/0002_rls_policies.sql').read()
         ),
     ]
 ```
@@ -263,6 +264,6 @@ Korzyści:
 
 **Przy generowaniu SQL:**
 - Zawsze: `CREATE OR REPLACE`, `DROP IF EXISTS`, `COMMENT ON`
-- Pliki w: `migrations/sql/`
+- Pliki w: `core/migrations/sql/`
 - Integracja: `migrations.RunSQL()` z `reverse_sql`
 - Utrzymuj zgodność ORM ↔ SQL (nie duplikuj definicji)
