@@ -1,39 +1,42 @@
-Jesteś wykwalifikowanym programistą TypeScript, którego zadaniem jest stworzenie biblioteki typów DTO (Data Transfer Object) i Command Model dla aplikacji. Twoim zadaniem jest przeanalizowanie definicji modelu bazy danych i planu API, a następnie utworzenie odpowiednich typów DTO, które dokładnie reprezentują struktury danych wymagane przez API, zachowując jednocześnie połączenie z podstawowymi modelami bazy danych.
+Jesteś wykwalifikowanym programistą Python/Django, specjalizującym się w budowie REST API przy użyciu Django REST Framework (DRF). Twoim zadaniem jest stworzenie warstwy serializacji (DTO i Command Models) dla aplikacji Pathie.
+
+Twoim celem jest przeanalizowanie modeli bazy danych (Django Models) oraz planu API, a następnie utworzenie odpowiednich Serializerów, które będą pełnić rolę DTO (dla odczytu danych) oraz Command Models (dla walidacji danych wejściowych).
 
 Najpierw dokładnie przejrzyj następujące dane wejściowe:
 
-1. Modele bazy danych:
+1. Modele bazy danych (Django ORM):
 <database_models>
 {{db-models}}
 </database_models>
 
-2. Plan API (zawierający zdefiniowane DTO):
+2. Plan API (zawierający definicje payloadów i endpointów):
 <api_plan>
 {{api-plan}}
 </api_plan>
 
-Twoim zadaniem jest utworzenie definicji typów TypeScript dla DTO i Command Modeli określonych w planie API, upewniając się, że pochodzą one z modeli bazy danych. Wykonaj następujące kroki:
+Twoim zadaniem jest utworzenie kodu Python zawierającego definicje Serializerów w `serializers.py`. Wykonaj następujące kroki:
 
-1. Przeanalizuj modele bazy danych i plan API.
-2. Utwórz typy DTO i Command Modele na podstawie planu API, wykorzystując definicje encji bazy danych.
-3. Zapewnienie zgodności między DTO i Command Modeli a wymaganiami API.
-4. Stosowanie odpowiednich funkcji języka TypeScript w celu tworzenia, zawężania lub rozszerzania typów zgodnie z potrzebami.
-5. Wykonaj końcowe sprawdzenie, aby upewnić się, że wszystkie DTO są uwzględnione i prawidłowo połączone z definicjami encji.
+1. Przeanalizuj modele bazy danych i plan API pod kątem wymaganych struktur danych.
+2. Utwórz Serializery (klasy dziedziczące po `rest_framework.serializers.Serializer` lub `ModelSerializer`).
+   - Dla **DTO** (odczyt): Użyj `ModelSerializer` tam gdzie to możliwe, aby zachować zgodność z ORM, lub zwykłych `Serializer` dla niestandardowych struktur.
+   - Dla **Command Models** (zapis/akcje): Utwórz serializery walidujące dane wejściowe (Input Serializers). Pamiętaj o regułach walidacji określonych w PRD/API Plan.
+3. Zapewnij mapowanie nazw pól i typów zgodnie z kontraktem API (camelCase vs snake_case - jeśli wymagane, lub standardowe dla Python snake_case).
+4. Wykonaj końcowe sprawdzenie, czy wszystkie endpointy z planu API mają pokrycie w serializerach.
 
-Przed utworzeniem ostatecznego wyniku, pracuj wewnątrz tagów <dto_analysis> w swoim bloku myślenia, aby pokazać swój proces myślowy i upewnić się, że wszystkie wymagania są spełnione. W swojej analizie:
-- Wymień wszystkie DTO i Command Modele zdefiniowane w planie API, numerując każdy z nich.
-- Dla każdego DTO i Comand Modelu:
- - Zidentyfikuj odpowiednie encje bazy danych i wszelkie niezbędne transformacje typów.
-  - Opisz funkcje lub narzędzia TypeScript, których planujesz użyć.
-  - Utwórz krótki szkic struktury DTO i Command Modelu.
-- Wyjaśnij, w jaki sposób zapewnisz, że każde DTO i Command Model jest bezpośrednio lub pośrednio połączone z definicjami typów encji.
+Przed utworzeniem ostatecznego wyniku, pracuj wewnątrz tagów <analysis> w swoim bloku myślenia:
+- Wymień wszystkie potrzebne serializery na podstawie Planu API.
+- Dla każdego z nich określ:
+  - Czy jest to DTO (odczyt) czy Command (zapis).
+  - Z jakim modelem bazy danych jest powiązany (jeśli dotyczy).
+  - Jakie pola musi zawierać i jakie reguły walidacji (np. `required`, `min_length`, `validators`) zastosować.
+- Rozważ odpowiednie struktury dla zagnieżdżonych danych (Nested Serializers).
 
-Po przeprowadzeniu analizy, podaj ostateczne definicje typów DTO i Command Modeli, które pojawią się w pliku src/types.ts. Użyj jasnych i opisowych nazw dla swoich typów i dodaj komentarze, aby wyjaśnić złożone manipulacje typami lub nieoczywiste relacje.
+Po przeprowadzeniu analizy, podaj ostateczny kod Python, który trafi do pliku (np. `pathie_app/api/serializers.py`).
 
 Pamiętaj:
-- Upewnij się, że wszystkie DTO i Command Modele zdefiniowane w planie API są uwzględnione.
-- Każdy DTO i Command Model powinien bezpośrednio odnosić się do jednej lub więcej encji bazy danych.
-- W razie potrzeby używaj funkcji TypeScript, takich jak Pick, Omit, Partial itp.
-- Dodaj komentarze, aby wyjaśnić złożone lub nieoczywiste manipulacje typami.
+- Kod musi być zgodny z **Python 3.10+** tzn korzystać z nowoczesnych type hints, ale w kontekście Django DRF.
+- Stosuj konwencję nazewniczą: `[Resource]Serializer` dla ogólnych, `[Resource]CreateSerializer` / `[Resource]UpdateSerializer` dla specyficznych akcji (Command Models), lub `[Resource]ReadSerializer` dla DTO, jeśli struktury się różnią.
+- Komentarze / Docstringi powinny wyjaśniać niestandardową logikę.
+- Uwzględnij wymagania **MVP** i **Stacku** (Django Monolith, DRF) - nie komplikuj przesadnie (np. unikaj nadmiarowych warstw abstrakcji, jeśli `ModelSerializer` wystarczy).
 
-Końcowy wynik powinien składać się wyłącznie z definicji typów DTO i Command Model, które zapiszesz w pliku src/types.ts, bez powielania lub ponownego wykonywania jakiejkolwiek pracy wykonanej w bloku myślenia.
+Końcowy wynik powinien składać się wyłącznie z kodu Python (zawartość pliku `serializers.py`).
