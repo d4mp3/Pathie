@@ -1,10 +1,10 @@
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
-from rest_framework.permissions import AllowAny
+from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.authtoken.models import Token
 from rest_framework.throttling import AnonRateThrottle
-from django.contrib.auth import get_user_model
+from django.contrib.auth import get_user_model, logout
 from typing import Any
 
 from .serializers import LoginSerializer
@@ -88,3 +88,67 @@ class LoginAPIView(APIView):
 
         # Return token in the expected format
         return Response({"key": token.key}, status=status.HTTP_200_OK)
+
+
+class LogoutAPIView(APIView):
+    """
+    API endpoint for user logout.
+
+    Invalidates the user's authentication token and clears the Django session.
+
+    **Endpoint:** POST /api/auth/logout/
+
+    **Required Headers:**
+    - Authorization: Token <token_key>
+
+    **Request Body:** Empty
+
+    **Success Response (200 OK):**
+    ```json
+    {
+        "detail": "Pomyślnie wylogowano."
+    }
+    ```
+
+    **Error Response (401 Unauthorized):**
+    ```json
+    {
+        "detail": "Nie podano danych uwierzytelniających."
+    }
+    ```
+
+    **Security Features:**
+    - Requires authentication (IsAuthenticated permission)
+    - Deletes the authentication token from database
+    - Clears Django session for hybrid browser/API access
+    - Uses POST method to prevent CSRF attacks and browser pre-fetching
+    """
+
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request: Any, *args: Any, **kwargs: Any) -> Response:
+        """
+        Handles POST requests for user logout.
+
+        Args:
+            request: HTTP request object with authenticated user
+
+        Returns:
+            Response: JSON response confirming successful logout
+        """
+        try:
+            # Delete the authentication token
+            # request.auth is the Token instance for TokenAuthentication
+            if hasattr(request.user, "auth_token"):
+                request.user.auth_token.delete()
+        except (AttributeError, Exception):
+            # Handle cases where user doesn't have a token or uses different auth method
+            # We still want to clear the session, so we don't raise an error
+            pass
+
+        # Clear Django session (for hybrid browser/API access)
+        logout(request)
+
+        return Response(
+            {"detail": "Pomyślnie wylogowano."}, status=status.HTTP_200_OK
+        )
