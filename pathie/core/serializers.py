@@ -1,6 +1,84 @@
 from rest_framework import serializers
 from django.db import transaction
+from django.contrib.auth import get_user_model
 from .models import Route, RoutePoint, Place, PlaceDescription, Tag, Rating, RouteTag
+
+User = get_user_model()
+
+
+# -----------------------------------------------------------------------------
+# Authentication Serializers
+# -----------------------------------------------------------------------------
+
+
+class LoginSerializer(serializers.Serializer):
+    """
+    Serializer for user authentication via email and password.
+    Validates credentials and returns the authenticated user instance.
+    """
+
+    email = serializers.EmailField(
+        required=True,
+        error_messages={
+            "required": "Adres e-mail jest wymagany.",
+            "invalid": "Wprowadź prawidłowy adres e-mail.",
+        },
+    )
+    password = serializers.CharField(
+        required=True,
+        write_only=True,
+        style={"input_type": "password"},
+        error_messages={"required": "Hasło jest wymagane."},
+    )
+
+    def validate(self, attrs: dict) -> dict:
+        """
+        Validates user credentials.
+
+        Args:
+            attrs: Dictionary containing email and password
+
+        Returns:
+            Dictionary with validated data including user instance
+
+        Raises:
+            serializers.ValidationError: If credentials are invalid
+        """
+        email = attrs.get("email")
+        password = attrs.get("password")
+
+        if not email or not password:
+            raise serializers.ValidationError(
+                "Adres e-mail i hasło są wymagane.", code="missing_fields"
+            )
+
+        # Normalize email to lowercase for case-insensitive lookup
+        email = email.lower()
+
+        # Find user by email
+        try:
+            user = User.objects.get(email=email)
+        except User.DoesNotExist:
+            raise serializers.ValidationError(
+                "Nieprawidłowy adres e-mail lub hasło.", code="invalid_credentials"
+            )
+
+        # Check password
+        if not user.check_password(password):
+            raise serializers.ValidationError(
+                "Nieprawidłowy adres e-mail lub hasło.", code="invalid_credentials"
+            )
+
+        # Check if user is active
+        if not user.is_active:
+            raise serializers.ValidationError(
+                "To konto zostało dezaktywowane.", code="account_inactive"
+            )
+
+        # Add user instance to validated data
+        attrs["user"] = user
+        return attrs
+
 
 # -----------------------------------------------------------------------------
 # Tag Serializers
