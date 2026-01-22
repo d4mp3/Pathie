@@ -1,9 +1,10 @@
 from rest_framework.views import APIView
 from rest_framework.response import Response
-from rest_framework import status
+from rest_framework import status, generics
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.authtoken.models import Token
 from rest_framework.throttling import AnonRateThrottle
+from rest_framework.pagination import PageNumberPagination
 from django.contrib.auth import get_user_model, logout
 from typing import Any
 
@@ -12,8 +13,10 @@ from .serializers import (
     RegistrationSerializer,
     UserSerializer,
     RatingSerializer,
+    RouteListSerializer,
 )
 from .models import Rating
+from .selectors import route_list_selector
 
 User = get_user_model()
 
@@ -372,3 +375,121 @@ class RatingAPIView(APIView):
         response_status = status.HTTP_201_CREATED if created else status.HTTP_200_OK
 
         return Response(response_serializer.data, status=response_status)
+
+
+# -----------------------------------------------------------------------------
+# Route Views
+# -----------------------------------------------------------------------------
+
+
+class StandardResultsSetPagination(PageNumberPagination):
+    """
+    Standard pagination configuration for list endpoints.
+
+    Provides consistent pagination across the API with:
+    - 10 items per page by default
+    - Customizable page size via 'page_size' query parameter (max 100)
+    - Clear next/previous links in response
+    """
+
+    page_size = 10
+    page_size_query_param = "page_size"
+    max_page_size = 100
+
+
+class RouteListAPIView(generics.ListAPIView):
+    """
+    API endpoint for retrieving a paginated list of user's routes.
+
+    Returns routes with basic information and points count, supporting filtering
+    by status and custom ordering.
+
+    **Endpoint:** GET /api/routes/
+
+    **Required Headers:**
+    - Authorization: Token <token_key>
+
+    **Query Parameters:**
+    - page: int - Page number for pagination (default: 1)
+    - page_size: int - Number of items per page (default: 10, max: 100)
+    - status: str - Filter by route status ('temporary', 'saved', default: 'saved')
+    - ordering: str - Field to order by (supports: 'created_at', '-created_at', 'name', '-name',
+                     'status', '-status', 'route_type', '-route_type', 'points_count', '-points_count')
+                     Prefix with '-' for descending order (default: '-created_at')
+
+    **Success Response (200 OK):**
+    ```json
+    {
+        "count": 15,
+        "next": "http://api.example.com/api/routes/?page=2",
+        "previous": null,
+        "results": [
+            {
+                "id": 101,
+                "name": "Warsaw Old Town",
+                "status": "saved",
+                "route_type": "ai_generated",
+                "created_at": "2024-01-01T12:00:00Z",
+                "points_count": 5
+            },
+            ...
+        ]
+    }
+    ```
+
+    **Error Response (401 Unauthorized):**
+    ```json
+    {
+        "detail": "Nie podano danych uwierzytelniających."
+    }
+    ```
+
+    **Error Response (400 Bad Request):**
+    ```json
+    {
+        "detail": "Nieprawidłowe parametry zapytania."
+    }
+    ```
+
+    **Security Features:**
+    - Requires authentication (IsAuthenticated permission)
+    - Automatic user isolation - users only see their own routes
+    - Query parameter validation to prevent SQL injection
+    - Efficient database queries with annotations to prevent N+1 problems
+
+    **Performance Optimizations:**
+    - Uses annotated points_count to avoid N+1 queries
+    - Leverages database indexes on (user, status, created_at)
+    - Pagination limits data transfer and processing
+    """
+
+    permission_classes = [IsAuthenticated]
+    serializer_class = RouteListSerializer
+    pagination_class = StandardResultsSetPagination
+
+    def get_queryset(self) -> Any:
+        """
+        Retrieve the filtered queryset of routes for the authenticated user.
+
+        Extracts query parameters (status, ordering) and delegates business logic
+        to the route_list_selector for clean separation of concerns.
+
+        Returns:
+            QuerySet[Route]: Filtered and annotated queryset of routes
+
+        Notes:
+            - User is automatically extracted from request.user (authenticated)
+            - Invalid query parameters are handled gracefully with defaults
+        """
+        user = self.request.user
+
+        # Extract query parameters
+        status_filter = self.request.query_params.get("status", None)
+        ordering = self.request.query_params.get("ordering", None)
+
+        # Delegate business logic to selector
+        return route_list_selector(
+            user=user,
+            status_filter=status_filter,
+            ordering=ordering,
+        )
