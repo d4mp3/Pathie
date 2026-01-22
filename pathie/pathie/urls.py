@@ -17,11 +17,17 @@ Including another URLconf
 
 from django.contrib import admin
 from django.urls import path
-from core.views import LoginAPIView, LogoutAPIView, RatingAPIView
+from core.views import (
+    RegistrationAPIView,
+    LoginAPIView,
+    LogoutAPIView,
+    RatingAPIView,
+)
 
 urlpatterns = [
     path("admin/", admin.site.urls),
     # API Authentication endpoints
+    path("api/auth/registration/", RegistrationAPIView.as_view(), name="api_registration"),
     path("api/auth/login/", LoginAPIView.as_view(), name="api_login"),
     path("api/auth/logout/", LogoutAPIView.as_view(), name="api_logout"),
     # API Rating endpoint

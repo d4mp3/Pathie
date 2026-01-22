@@ -7,7 +7,12 @@ from rest_framework.throttling import AnonRateThrottle
 from django.contrib.auth import get_user_model, logout
 from typing import Any
 
-from .serializers import LoginSerializer, RatingSerializer
+from .serializers import (
+    LoginSerializer,
+    RegistrationSerializer,
+    UserSerializer,
+    RatingSerializer,
+)
 from .models import Rating
 
 User = get_user_model()
@@ -16,6 +21,96 @@ User = get_user_model()
 # -----------------------------------------------------------------------------
 # Authentication Views
 # -----------------------------------------------------------------------------
+
+
+class RegistrationAPIView(APIView):
+    """
+    API endpoint for user registration.
+
+    Accepts email and password, validates data, creates new user account,
+    and returns an authentication token for immediate API access.
+
+    **Endpoint:** POST /api/auth/registration/
+
+    **Request Body:**
+    ```json
+    {
+        "email": "user@example.com",
+        "password": "securepassword123",
+        "password_confirm": "securepassword123"
+    }
+    ```
+
+    **Success Response (201 Created):**
+    ```json
+    {
+        "token": "9944b09199c62bcf9418ad846dd0e4bbdfc6ee4b",
+        "user_id": 1,
+        "email": "user@example.com"
+    }
+    ```
+
+    **Error Response (400 Bad Request):**
+    ```json
+    {
+        "email": ["Użytkownik z tym adresem email już istnieje."],
+        "password_confirm": ["Hasła nie są identyczne."]
+    }
+    ```
+    or
+    ```json
+    {
+        "password": [
+            "To hasło jest zbyt krótkie. Musi zawierać co najmniej 8 znaków.",
+            "To hasło jest zbyt powszechne."
+        ]
+    }
+    ```
+
+    **Security Features:**
+    - Rate limiting: 5 requests per minute for anonymous users
+    - Password strength validation using Django's validators
+    - Email uniqueness validation
+    - Automatic password hashing
+    - Transaction atomic to ensure data consistency
+    """
+
+    permission_classes = [AllowAny]
+    throttle_classes = [AnonRateThrottle]
+    serializer_class = RegistrationSerializer
+
+    def post(self, request: Any, *args: Any, **kwargs: Any) -> Response:
+        """
+        Handles POST requests for user registration.
+
+        Args:
+            request: HTTP request object containing email, password, and password_confirm
+
+        Returns:
+            Response: JSON response with authentication token and user data or error messages
+                     - 201 Created if registration successful
+                     - 400 Bad Request for validation errors
+        """
+        serializer = self.serializer_class(data=request.data)
+
+        # Validate input data
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        # Create new user
+        user = serializer.save()
+
+        # Get the authentication token (created in serializer)
+        token = Token.objects.get(user=user)
+
+        # Prepare response data
+        user_serializer = UserSerializer(user)
+        response_data = {
+            "token": token.key,
+            **user_serializer.data,
+        }
+
+        return Response(response_data, status=status.HTTP_201_CREATED)
 
 
 class LoginAPIView(APIView):

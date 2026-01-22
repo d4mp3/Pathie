@@ -1,6 +1,9 @@
 from rest_framework import serializers
 from django.db import transaction
 from django.contrib.auth import get_user_model
+from django.contrib.auth.password_validation import validate_password
+from django.core.exceptions import ValidationError as DjangoValidationError
+from rest_framework.authtoken.models import Token
 from .models import Route, RoutePoint, Place, PlaceDescription, Tag, Rating, RouteTag
 
 User = get_user_model()
@@ -9,6 +12,145 @@ User = get_user_model()
 # -----------------------------------------------------------------------------
 # Authentication Serializers
 # -----------------------------------------------------------------------------
+
+
+class UserSerializer(serializers.ModelSerializer):
+    """
+    Serializer for User model.
+    Returns basic user information for authentication responses.
+    """
+
+    user_id = serializers.IntegerField(source="id", read_only=True)
+
+    class Meta:
+        model = User
+        fields = ["user_id", "email"]
+        read_only_fields = ["user_id", "email"]
+
+
+class RegistrationSerializer(serializers.Serializer):
+    """
+    Serializer for user registration.
+    Validates email uniqueness, password strength, and password confirmation match.
+    Creates new user and returns authentication token.
+    """
+
+    email = serializers.EmailField(
+        required=True,
+        error_messages={
+            "required": "Adres e-mail jest wymagany.",
+            "invalid": "Wprowadź prawidłowy adres e-mail.",
+        },
+    )
+    password = serializers.CharField(
+        required=True,
+        write_only=True,
+        style={"input_type": "password"},
+        error_messages={"required": "Hasło jest wymagane."},
+    )
+    password_confirm = serializers.CharField(
+        required=True,
+        write_only=True,
+        style={"input_type": "password"},
+        error_messages={"required": "Potwierdzenie hasła jest wymagane."},
+    )
+
+    def validate_email(self, value: str) -> str:
+        """
+        Validates email uniqueness.
+
+        Args:
+            value: Email address to validate
+
+        Returns:
+            Normalized (lowercase) email address
+
+        Raises:
+            serializers.ValidationError: If email already exists
+        """
+        # Normalize email to lowercase for case-insensitive lookup
+        email = value.lower()
+
+        # Check if email already exists
+        if User.objects.filter(email=email).exists():
+            raise serializers.ValidationError(
+                "Użytkownik z tym adresem email już istnieje.", code="email_exists"
+            )
+
+        return email
+
+    def validate_password(self, value: str) -> str:
+        """
+        Validates password strength using Django's password validators.
+
+        Args:
+            value: Password to validate
+
+        Returns:
+            Validated password
+
+        Raises:
+            serializers.ValidationError: If password doesn't meet requirements
+        """
+        try:
+            validate_password(value)
+        except DjangoValidationError as e:
+            raise serializers.ValidationError(list(e.messages), code="password_invalid")
+
+        return value
+
+    def validate(self, attrs: dict) -> dict:
+        """
+        Validates that password and password_confirm match.
+
+        Args:
+            attrs: Dictionary containing all input data
+
+        Returns:
+            Validated data
+
+        Raises:
+            serializers.ValidationError: If passwords don't match
+        """
+        password = attrs.get("password")
+        password_confirm = attrs.get("password_confirm")
+
+        if password != password_confirm:
+            raise serializers.ValidationError(
+                {"password_confirm": "Hasła nie są identyczne."},
+                code="passwords_mismatch",
+            )
+
+        return attrs
+
+    @transaction.atomic
+    def create(self, validated_data: dict) -> User:
+        """
+        Creates a new user with the validated data.
+
+        Args:
+            validated_data: Dictionary with validated email and password
+
+        Returns:
+            Created User instance with authentication token
+
+        Note:
+            - Username is set to email address
+            - Password is automatically hashed by create_user
+            - Authentication token is created automatically
+        """
+        email = validated_data["email"]
+        password = validated_data["password"]
+
+        # Create user with email as username
+        user = User.objects.create_user(
+            username=email, email=email, password=password
+        )
+
+        # Create authentication token for immediate API access
+        Token.objects.create(user=user)
+
+        return user
 
 
 class LoginSerializer(serializers.Serializer):
