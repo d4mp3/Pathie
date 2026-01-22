@@ -346,7 +346,8 @@ class RatingSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Rating
-        fields = ["rating_type", "rating_value", "route", "place_description"]
+        fields = ["id", "rating_type", "rating_value", "route", "place_description"]
+        read_only_fields = ["id"]
 
     def validate(self, data):
         rating_type = data.get("rating_type")
