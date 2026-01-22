@@ -12,6 +12,7 @@ django==5.2.7
     #   django-stubs
     #   django-stubs-ext
     #   django-tailwind
+    #   djangorestframework
 django-environ==0.12.0
     # via backend (pyproject.toml)
 django-htmx==1.26.0
@@ -23,6 +24,8 @@ django-stubs==5.2.7
 django-stubs-ext==5.2.7
     # via django-stubs
 django-tailwind==4.2.0
+    # via backend (pyproject.toml)
+djangorestframework==3.16.1
     # via backend (pyproject.toml)
 gunicorn==23.0.0
     # via backend (pyproject.toml)
