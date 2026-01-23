@@ -18,9 +18,12 @@ from .serializers import (
     RatingSerializer,
     RouteListSerializer,
     RouteDetailSerializer,
+    RouteOptimizeInputSerializer,
+    RoutePointDetailSerializer,
 )
 from .models import Rating, Route, RoutePoint
 from .selectors import route_list_selector
+from .services import RouteService, BusinessLogicException
 
 User = get_user_model()
 
@@ -664,3 +667,170 @@ class RouteDetailAPIView(APIView):
 
         # Return 204 No Content (standard response for successful DELETE)
         return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class RouteOptimizeAPIView(APIView):
+    """
+    API endpoint for optimizing the order of points in a manual route.
+
+    Applies optimization algorithm (e.g., nearest neighbor TSP) to find the shortest
+    path between all points in the route. Updates point positions permanently.
+
+    **Endpoint:** POST /api/routes/{id}/optimize/
+
+    **Required Headers:**
+    - Authorization: Token <token_key>
+
+    **Path Parameters:**
+    - id: int - Unique identifier of the route
+
+    **Request Body (JSON, optional):**
+    ```json
+    {
+        "strategy": "nearest_neighbor"
+    }
+    ```
+
+    **Success Response (200 OK):**
+    ```json
+    [
+        {
+            "id": 501,
+            "order": 0,
+            "place": {
+                "id": 200,
+                "name": "Royal Castle",
+                "lat": 52.248,
+                "lon": 21.015,
+                "address": "Plac Zamkowy 4"
+            },
+            "description": {
+                "id": 901,
+                "content": "A detailed AI-generated story..."
+            }
+        },
+        {
+            "id": 502,
+            "order": 1,
+            "place": { ... },
+            "description": { ... }
+        }
+    ]
+    ```
+
+    **Error Response (400 Bad Request):**
+    ```json
+    {
+        "detail": "Tylko trasy typu 'manual' mogą być optymalizowane."
+    }
+    ```
+    or
+    ```json
+    {
+        "detail": "Trasa musi mieć co najmniej 2 punkty, aby można było ją optymalizować."
+    }
+    ```
+
+    **Error Response (401 Unauthorized):**
+    ```json
+    {
+        "detail": "Nie podano danych uwierzytelniających."
+    }
+    ```
+
+    **Error Response (404 Not Found):**
+    ```json
+    {
+        "detail": "Nie znaleziono."
+    }
+    ```
+
+    **Security Features:**
+    - Requires authentication (IsAuthenticated permission)
+    - Automatic user isolation - users can only optimize their own routes
+    - Returns 404 for non-existent routes or routes belonging to other users
+    - Atomic transaction ensures data consistency during position updates
+
+    **Business Rules:**
+    - Only manual routes can be optimized (ai_generated routes are read-only)
+    - Route must have at least 2 points to optimize
+    - First point is kept as starting location, rest are optimized
+
+    **Performance:**
+    - Uses bulk_update for efficient database operations
+    - Transaction atomic ensures consistency
+    - Suitable for routes with up to ~50 points (O(n²) complexity)
+    """
+
+    permission_classes = [IsAuthenticated]
+
+    @transaction.atomic
+    def post(self, request: Any, pk: int, *args: Any, **kwargs: Any) -> Response:
+        """
+        Handles POST requests for route optimization.
+
+        Validates input parameters, checks business rules, applies optimization
+        algorithm, and returns the updated list of points.
+
+        Args:
+            request: HTTP request object with authenticated user and optional config
+            pk: Primary key (ID) of the route to optimize
+
+        Returns:
+            Response: JSON response with optimized points list and 200 OK status
+                     400 Bad Request if business rules are violated
+                     404 Not Found if route doesn't exist or belongs to another user
+        """
+        # Validate input serializer
+        input_serializer = RouteOptimizeInputSerializer(data=request.data)
+        if not input_serializer.is_valid():
+            return Response(
+                input_serializer.errors,
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Get validated configuration
+        config = input_serializer.validated_data
+
+        # Get route belonging to the authenticated user
+        # This ensures user isolation - returns 404 if route doesn't exist
+        # or belongs to another user (security best practice)
+        route = get_object_or_404(Route, pk=pk, user=request.user)
+
+        try:
+            # Call service layer to perform optimization
+            optimized_points = RouteService.optimize_route(route, config)
+
+            # Reload points with related data for serialization
+            # We need to refetch to get the updated positions and include descriptions
+            route_points_with_relations = (
+                RoutePoint.objects.filter(route=route, is_removed=False)
+                .select_related('place', 'description')
+                .order_by('position')
+            )
+
+            # Serialize and return optimized points
+            serializer = RoutePointDetailSerializer(
+                route_points_with_relations,
+                many=True
+            )
+
+            return Response(serializer.data, status=status.HTTP_200_OK)
+
+        except BusinessLogicException as e:
+            # Business rule violation (wrong route type, too few points)
+            return Response(
+                {"detail": str(e)},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        except Exception as e:
+            # Unexpected error - log and return 500
+            logger.error(
+                f"Unexpected error during route optimization: "
+                f"route_id={pk}, user_id={request.user.id}, error={str(e)}",
+                exc_info=True
+            )
+            return Response(
+                {"detail": "Wystąpił błąd podczas optymalizacji trasy."},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )

@@ -516,13 +516,47 @@ class RouteUpdateSerializer(serializers.ModelSerializer):
         return value
 
 
-class RouteOptimizeSerializer(serializers.Serializer):
+class RouteOptimizeInputSerializer(serializers.Serializer):
     """
-    Trigger serializer for route optimization.
-    Currently empty as configuration is optional/TBD.
+    Input serializer for route optimization endpoint.
+    
+    Validates optional configuration parameters for the optimization algorithm.
     """
 
-    pass
+    STRATEGY_NEAREST_NEIGHBOR = 'nearest_neighbor'
+    STRATEGY_TSP_APPROX = 'tsp_approx'
+    
+    STRATEGY_CHOICES = [
+        (STRATEGY_NEAREST_NEIGHBOR, 'Nearest Neighbor'),
+        (STRATEGY_TSP_APPROX, 'TSP Approximation'),
+    ]
+
+    strategy = serializers.ChoiceField(
+        choices=STRATEGY_CHOICES,
+        default=STRATEGY_NEAREST_NEIGHBOR,
+        required=False,
+        help_text="Optimization strategy to use"
+    )
+
+    def validate_strategy(self, value: str) -> str:
+        """
+        Validate the optimization strategy.
+
+        Args:
+            value: Strategy name to validate
+
+        Returns:
+            Validated strategy name
+
+        Raises:
+            serializers.ValidationError: If strategy is not supported
+        """
+        valid_strategies = [choice[0] for choice in self.STRATEGY_CHOICES]
+        if value not in valid_strategies:
+            raise serializers.ValidationError(
+                f"Nieprawidłowa strategia. Dostępne: {', '.join(valid_strategies)}"
+            )
+        return value
 
 
 # -----------------------------------------------------------------------------
