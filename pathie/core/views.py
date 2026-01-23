@@ -7,6 +7,7 @@ from rest_framework.throttling import AnonRateThrottle
 from rest_framework.pagination import PageNumberPagination
 from django.contrib.auth import get_user_model, logout
 from django.db import transaction
+from django.db.models import Prefetch, Subquery, OuterRef, IntegerField
 from django.shortcuts import get_object_or_404
 from typing import Any
 
@@ -16,8 +17,9 @@ from .serializers import (
     UserSerializer,
     RatingSerializer,
     RouteListSerializer,
+    RouteDetailSerializer,
 )
-from .models import Rating, Route
+from .models import Rating, Route, RoutePoint
 from .selectors import route_list_selector
 
 User = get_user_model()
@@ -503,6 +505,7 @@ class RouteDetailAPIView(APIView):
 
     Provides operations on individual routes with automatic user isolation.
 
+    **Endpoint:** GET /api/routes/{id}/
     **Endpoint:** DELETE /api/routes/{id}/
 
     **Required Headers:**
@@ -510,6 +513,34 @@ class RouteDetailAPIView(APIView):
 
     **Path Parameters:**
     - id: int - Unique identifier of the route
+
+    **GET Success Response (200 OK):**
+    ```json
+    {
+        "id": 101,
+        "name": "Warsaw Old Town",
+        "status": "temporary",
+        "route_type": "ai_generated",
+        "user_rating_value": 1,
+        "points": [
+            {
+                "id": 501,
+                "order": 1,
+                "place": {
+                    "id": 200,
+                    "name": "Royal Castle",
+                    "lat": 52.248,
+                    "lon": 21.015,
+                    "address": "Plac Zamkowy 4"
+                },
+                "description": {
+                    "id": 901,
+                    "content": "A detailed AI-generated story..."
+                }
+            }
+        ]
+    }
+    ```
 
     **DELETE Success Response (204 No Content):**
     Empty response body
@@ -530,9 +561,14 @@ class RouteDetailAPIView(APIView):
 
     **Security Features:**
     - Requires authentication (IsAuthenticated permission)
-    - Automatic user isolation - users can only delete their own routes
+    - Automatic user isolation - users can only access their own routes
     - Returns 404 for non-existent routes or routes belonging to other users
     - Atomic transaction ensures data consistency during cascade deletion
+
+    **Performance Optimizations (GET):**
+    - Uses prefetch_related to avoid N+1 queries
+    - Annotates user_rating_value using Subquery for efficiency
+    - Points are ordered by position in the database
 
     **Cascade Deletion:**
     When a route is deleted, the following related objects are automatically removed:
@@ -546,6 +582,55 @@ class RouteDetailAPIView(APIView):
     """
 
     permission_classes = [IsAuthenticated]
+
+    def get(self, request: Any, pk: int, *args: Any, **kwargs: Any) -> Response:
+        """
+        Handles GET requests for retrieving route details.
+
+        Retrieves a single route with all its points, places, and descriptions.
+        Includes user's rating for the route if it exists.
+
+        Args:
+            request: HTTP request object with authenticated user
+            pk: Primary key (ID) of the route to retrieve
+
+        Returns:
+            Response: JSON response with route details and 200 OK status
+                     404 Not Found if route doesn't exist or belongs to another user
+        """
+        # Build optimized queryset with prefetch_related to avoid N+1 queries
+        # Prefetch route points ordered by position, with related place and description
+        route_points_prefetch = Prefetch(
+            "points",
+            queryset=RoutePoint.objects.select_related(
+                "place", "description"
+            ).order_by("position"),
+        )
+
+        # Subquery to get user's rating value for this route
+        user_rating_subquery = Rating.objects.filter(
+            route=OuterRef("pk"),
+            user=request.user,
+            rating_type=Rating.TYPE_ROUTE,
+        ).values("rating_value")[:1]
+
+        # Get route with all optimizations
+        queryset = (
+            Route.objects.filter(user=request.user)
+            .prefetch_related(route_points_prefetch)
+            .annotate(
+                user_rating_value=Subquery(
+                    user_rating_subquery, output_field=IntegerField()
+                )
+            )
+        )
+
+        # Get the route or return 404
+        route = get_object_or_404(queryset, pk=pk)
+
+        # Serialize and return
+        serializer = RouteDetailSerializer(route)
+        return Response(serializer.data, status=status.HTTP_200_OK)
 
     @transaction.atomic
     def delete(self, request: Any, pk: int, *args: Any, **kwargs: Any) -> Response:

@@ -244,6 +244,18 @@ class TagSerializer(serializers.ModelSerializer):
 # -----------------------------------------------------------------------------
 
 
+class PlaceSimpleSerializer(serializers.ModelSerializer):
+    """
+    Simplified serializer for Place model.
+    Used in route detail view for minimal place information.
+    """
+
+    class Meta:
+        model = Place
+        fields = ["id", "name", "lat", "lon", "address"]
+        read_only_fields = ["id", "name", "lat", "lon", "address"]
+
+
 class PlaceSerializer(serializers.ModelSerializer):
     """
     Serializer for Place model.
@@ -266,6 +278,18 @@ class PlaceSerializer(serializers.ModelSerializer):
         ]
 
 
+class PlaceDescriptionContentSerializer(serializers.ModelSerializer):
+    """
+    Simplified serializer for PlaceDescription model.
+    Used in route detail view for minimal description information.
+    """
+
+    class Meta:
+        model = PlaceDescription
+        fields = ["id", "content"]
+        read_only_fields = ["id", "content"]
+
+
 class PlaceDescriptionSerializer(serializers.ModelSerializer):
     """
     Serializer for PlaceDescription model.
@@ -280,6 +304,25 @@ class PlaceDescriptionSerializer(serializers.ModelSerializer):
 # -----------------------------------------------------------------------------
 # Route Point Serializers
 # -----------------------------------------------------------------------------
+
+
+class RoutePointDetailSerializer(serializers.ModelSerializer):
+    """
+    Detailed serializer for RoutePoint used in route detail view.
+    Maps 'position' field to 'order' in the output.
+    Includes nested Place and Description with minimal fields.
+    """
+
+    order = serializers.IntegerField(source="position", read_only=True)
+    place = PlaceSimpleSerializer(read_only=True)
+    description = PlaceDescriptionContentSerializer(
+        read_only=True, allow_null=True
+    )  # related_name='description' on model
+
+    class Meta:
+        model = RoutePoint
+        fields = ["id", "order", "place", "description"]
+        read_only_fields = ["id", "order", "place", "description"]
 
 
 class RoutePointSerializer(serializers.ModelSerializer):
@@ -377,25 +420,31 @@ class RouteListSerializer(serializers.ModelSerializer):
 
 class RouteDetailSerializer(serializers.ModelSerializer):
     """
-    Full Route DTO including nested points.
+    Full Route DTO including nested points with detailed information.
+    Used for GET /api/routes/{id}/ endpoint.
+    
+    The 'points' field uses RoutePointDetailSerializer which maps position -> order
+    and includes minimal Place and PlaceDescription data.
+    The 'user_rating_value' field is annotated in the view's queryset.
     """
 
-    points = RoutePointSerializer(
-        source="points", many=True, read_only=True
+    points = RoutePointDetailSerializer(
+        many=True, read_only=True
     )  # related_name='points'
     user_rating_value = serializers.IntegerField(
         read_only=True, allow_null=True
-    )  # Annotated
+    )  # Annotated in queryset
 
     class Meta:
         model = Route
         fields = ["id", "name", "status", "route_type", "user_rating_value", "points"]
         read_only_fields = [
             "id",
-            "created_at",
-            "updated_at",
-            "points",
+            "name",
+            "status",
+            "route_type",
             "user_rating_value",
+            "points",
         ]
 
 

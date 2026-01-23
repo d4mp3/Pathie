@@ -352,25 +352,25 @@ class RouteDeleteAPIViewTests(TestCase):
         self.assertTrue(Route.objects.filter(id=self.route1.id).exists())
 
     def test_delete_route_only_delete_method_allowed(self):
-        """Test that only DELETE method works for deletion endpoint."""
+        """Test that only GET and DELETE methods are allowed for route detail endpoint."""
         # Authenticate as user1
         self.client.credentials(HTTP_AUTHORIZATION=f"Token {self.token1.key}")
 
         url = f"/api/routes/{self.route1.id}/"
 
-        # Try GET method
+        # GET method should work (returns route details)
         response = self.client.get(url)
-        self.assertEqual(response.status_code, status.HTTP_405_METHOD_NOT_ALLOWED)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
 
-        # Try POST method
+        # Try POST method - should fail
         response = self.client.post(url, {})
         self.assertEqual(response.status_code, status.HTTP_405_METHOD_NOT_ALLOWED)
 
-        # Try PUT method
+        # Try PUT method - should fail
         response = self.client.put(url, {})
         self.assertEqual(response.status_code, status.HTTP_405_METHOD_NOT_ALLOWED)
 
-        # Try PATCH method
+        # Try PATCH method - should fail
         response = self.client.patch(url, {})
         self.assertEqual(response.status_code, status.HTTP_405_METHOD_NOT_ALLOWED)
 
@@ -407,3 +407,454 @@ class RouteDeleteAPIViewTests(TestCase):
         # Verify success
         self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
         self.assertFalse(Route.objects.filter(id=self.route2.id).exists())
+
+
+# -----------------------------------------------------------------------------
+# Serializer Tests
+# -----------------------------------------------------------------------------
+
+
+class PlaceSimpleSerializerTests(TestCase):
+    """
+    Test suite for PlaceSimpleSerializer.
+    Tests serialization of Place model with minimal fields.
+    """
+
+    def setUp(self):
+        """Set up test place."""
+        self.place = Place.objects.create(
+            name="Royal Castle",
+            lat=52.2480,
+            lon=21.0150,
+            address="Plac Zamkowy 4",
+            city="Warsaw",
+            country="Poland",
+            osm_id=123456789,
+            data={"type": "castle", "historic": "yes"},
+        )
+
+    def test_serializer_contains_expected_fields(self):
+        """Test that serializer contains only expected fields."""
+        serializer = PlaceSimpleSerializer(instance=self.place)
+        data = serializer.data
+
+        # Check that only expected fields are present
+        expected_fields = {"id", "name", "lat", "lon", "address"}
+        self.assertEqual(set(data.keys()), expected_fields)
+
+    def test_serializer_field_values(self):
+        """Test that serializer returns correct field values."""
+        serializer = PlaceSimpleSerializer(instance=self.place)
+        data = serializer.data
+
+        self.assertEqual(data["id"], self.place.id)
+        self.assertEqual(data["name"], "Royal Castle")
+        self.assertEqual(data["lat"], 52.2480)
+        self.assertEqual(data["lon"], 21.0150)
+        self.assertEqual(data["address"], "Plac Zamkowy 4")
+
+    def test_serializer_excludes_extra_fields(self):
+        """Test that serializer excludes fields not in field list."""
+        serializer = PlaceSimpleSerializer(instance=self.place)
+        data = serializer.data
+
+        # These fields should NOT be present
+        self.assertNotIn("city", data)
+        self.assertNotIn("country", data)
+        self.assertNotIn("osm_id", data)
+        self.assertNotIn("wikipedia_id", data)
+        self.assertNotIn("data", data)
+        self.assertNotIn("created_at", data)
+        self.assertNotIn("updated_at", data)
+
+    def test_serializer_with_null_address(self):
+        """Test serializer handles null address correctly."""
+        place_no_address = Place.objects.create(
+            name="Unknown Place",
+            lat=50.0,
+            lon=20.0,
+            address=None,
+        )
+
+        serializer = PlaceSimpleSerializer(instance=place_no_address)
+        data = serializer.data
+
+        self.assertEqual(data["address"], None)
+        self.assertEqual(data["name"], "Unknown Place")
+
+    def test_serializer_with_empty_address(self):
+        """Test serializer handles empty string address correctly."""
+        place_empty_address = Place.objects.create(
+            name="Place Without Address",
+            lat=51.0,
+            lon=19.0,
+            address="",
+        )
+
+        serializer = PlaceSimpleSerializer(instance=place_empty_address)
+        data = serializer.data
+
+        self.assertEqual(data["address"], "")
+
+    def test_serializer_read_only_fields(self):
+        """Test that serializer is designed for read-only operations."""
+        # This serializer is designed for read-only operations
+        # It should work for serialization (reading) but not deserialization (writing)
+        
+        # Test that we can serialize existing data
+        serializer = PlaceSimpleSerializer(instance=self.place)
+        data = serializer.data
+        
+        # Verify serialization works
+        self.assertIsNotNone(data)
+        self.assertEqual(data["name"], "Royal Castle")
+        
+        # The serializer is meant for nested read-only use,
+        # not for accepting input data directly
+
+    def test_serializer_multiple_places(self):
+        """Test serializer works correctly with multiple instances."""
+        place2 = Place.objects.create(
+            name="Palace of Culture",
+            lat=52.2319,
+            lon=21.0067,
+            address="Plac Defilad 1",
+        )
+
+        places = [self.place, place2]
+        serializer = PlaceSimpleSerializer(places, many=True)
+        data = serializer.data
+
+        self.assertEqual(len(data), 2)
+        self.assertEqual(data[0]["name"], "Royal Castle")
+        self.assertEqual(data[1]["name"], "Palace of Culture")
+
+
+class PlaceDescriptionContentSerializerTests(TestCase):
+    """
+    Test suite for PlaceDescriptionContentSerializer.
+    Tests serialization of PlaceDescription model with minimal fields.
+    """
+
+    def setUp(self):
+        """Set up test data."""
+        self.user = User.objects.create_user(
+            username="testuser@example.com",
+            email="testuser@example.com",
+            password="testpass123",
+        )
+
+        self.route = Route.objects.create(
+            user=self.user,
+            name="Test Route",
+            status="saved",
+            route_type="ai_generated",
+        )
+
+        self.place = Place.objects.create(
+            name="Test Place",
+            lat=52.2297,
+            lon=21.0122,
+        )
+
+        self.route_point = RoutePoint.objects.create(
+            route=self.route,
+            place=self.place,
+            position=1,
+            source="ai_generated",
+        )
+
+        self.description = PlaceDescription.objects.create(
+            route_point=self.route_point,
+            language_code="pl",
+            content="A" * 3000,  # Valid content length (2500-5000 chars)
+        )
+
+    def test_serializer_contains_expected_fields(self):
+        """Test that serializer contains only expected fields."""
+        serializer = PlaceDescriptionContentSerializer(instance=self.description)
+        data = serializer.data
+
+        # Check that only expected fields are present
+        expected_fields = {"id", "content"}
+        self.assertEqual(set(data.keys()), expected_fields)
+
+    def test_serializer_field_values(self):
+        """Test that serializer returns correct field values."""
+        serializer = PlaceDescriptionContentSerializer(instance=self.description)
+        data = serializer.data
+
+        self.assertEqual(data["id"], self.description.id)
+        self.assertEqual(data["content"], "A" * 3000)
+
+    def test_serializer_excludes_extra_fields(self):
+        """Test that serializer excludes fields not in field list."""
+        serializer = PlaceDescriptionContentSerializer(instance=self.description)
+        data = serializer.data
+
+        # These fields should NOT be present
+        self.assertNotIn("language_code", data)
+        self.assertNotIn("route_point", data)
+        self.assertNotIn("created_at", data)
+        self.assertNotIn("updated_at", data)
+
+    def test_serializer_with_long_content(self):
+        """Test serializer handles maximum length content correctly."""
+        # Create a new route point for this description (OneToOne constraint)
+        route_point2 = RoutePoint.objects.create(
+            route=self.route,
+            place=self.place,
+            position=2,
+            source="ai_generated",
+        )
+        
+        long_description = PlaceDescription.objects.create(
+            route_point=route_point2,
+            language_code="en",
+            content="B" * 5000,  # Maximum valid length
+        )
+
+        serializer = PlaceDescriptionContentSerializer(instance=long_description)
+        data = serializer.data
+
+        self.assertEqual(len(data["content"]), 5000)
+        self.assertEqual(data["content"], "B" * 5000)
+
+    def test_serializer_read_only_fields(self):
+        """Test that serializer is designed for read-only operations."""
+        # This serializer is designed for read-only operations
+        # It should work for serialization (reading) but not deserialization (writing)
+        
+        # Test that we can serialize existing data
+        serializer = PlaceDescriptionContentSerializer(instance=self.description)
+        data = serializer.data
+        
+        # Verify serialization works
+        self.assertIsNotNone(data)
+        self.assertEqual(data["content"], "A" * 3000)
+        
+        # The serializer is meant for nested read-only use,
+        # not for accepting input data directly
+
+    def test_serializer_multiple_descriptions(self):
+        """Test serializer works correctly with multiple instances."""
+        # Create second route point and description
+        route_point2 = RoutePoint.objects.create(
+            route=self.route,
+            place=self.place,
+            position=2,
+            source="ai_generated",
+        )
+
+        description2 = PlaceDescription.objects.create(
+            route_point=route_point2,
+            language_code="en",
+            content="C" * 3500,
+        )
+
+        descriptions = [self.description, description2]
+        serializer = PlaceDescriptionContentSerializer(descriptions, many=True)
+        data = serializer.data
+
+        self.assertEqual(len(data), 2)
+        self.assertEqual(data[0]["content"], "A" * 3000)
+        self.assertEqual(data[1]["content"], "C" * 3500)
+
+
+class RoutePointDetailSerializerTests(TestCase):
+    """
+    Test suite for RoutePointDetailSerializer.
+    Tests serialization of RoutePoint with nested Place and PlaceDescription.
+    """
+
+    def setUp(self):
+        """Set up test data."""
+        self.user = User.objects.create_user(
+            username="testuser@example.com",
+            email="testuser@example.com",
+            password="testpass123",
+        )
+
+        self.route = Route.objects.create(
+            user=self.user,
+            name="Test Route",
+            status="saved",
+            route_type="ai_generated",
+        )
+
+        self.place = Place.objects.create(
+            name="Royal Castle",
+            lat=52.2480,
+            lon=21.0150,
+            address="Plac Zamkowy 4",
+            city="Warsaw",
+            country="Poland",
+        )
+
+        self.route_point = RoutePoint.objects.create(
+            route=self.route,
+            place=self.place,
+            position=1,
+            source="ai_generated",
+        )
+
+        self.description = PlaceDescription.objects.create(
+            route_point=self.route_point,
+            language_code="pl",
+            content="D" * 3000,
+        )
+
+    def test_serializer_contains_expected_fields(self):
+        """Test that serializer contains only expected fields."""
+        serializer = RoutePointDetailSerializer(instance=self.route_point)
+        data = serializer.data
+
+        # Check that expected fields are present
+        expected_fields = {"id", "order", "place", "description"}
+        self.assertEqual(set(data.keys()), expected_fields)
+
+    def test_serializer_position_mapped_to_order(self):
+        """Test that 'position' field is mapped to 'order' in output."""
+        serializer = RoutePointDetailSerializer(instance=self.route_point)
+        data = serializer.data
+
+        # 'order' should be present and equal to 'position'
+        self.assertIn("order", data)
+        self.assertEqual(data["order"], 1)
+
+        # 'position' should NOT be present in output
+        self.assertNotIn("position", data)
+
+    def test_serializer_nested_place_structure(self):
+        """Test that nested place has correct structure."""
+        serializer = RoutePointDetailSerializer(instance=self.route_point)
+        data = serializer.data
+
+        # Check place is nested and has correct fields
+        self.assertIn("place", data)
+        place_data = data["place"]
+
+        expected_place_fields = {"id", "name", "lat", "lon", "address"}
+        self.assertEqual(set(place_data.keys()), expected_place_fields)
+
+        # Check place values
+        self.assertEqual(place_data["id"], self.place.id)
+        self.assertEqual(place_data["name"], "Royal Castle")
+        self.assertEqual(place_data["lat"], 52.2480)
+        self.assertEqual(place_data["lon"], 21.0150)
+        self.assertEqual(place_data["address"], "Plac Zamkowy 4")
+
+    def test_serializer_nested_description_structure(self):
+        """Test that nested description has correct structure."""
+        serializer = RoutePointDetailSerializer(instance=self.route_point)
+        data = serializer.data
+
+        # Check description is nested and has correct fields
+        self.assertIn("description", data)
+        description_data = data["description"]
+
+        expected_description_fields = {"id", "content"}
+        self.assertEqual(set(description_data.keys()), expected_description_fields)
+
+        # Check description values
+        self.assertEqual(description_data["id"], self.description.id)
+        self.assertEqual(description_data["content"], "D" * 3000)
+
+    def test_serializer_with_null_description(self):
+        """Test serializer handles route point without description."""
+        # Create route point without description
+        route_point_no_desc = RoutePoint.objects.create(
+            route=self.route,
+            place=self.place,
+            position=2,
+            source="manual",
+        )
+
+        serializer = RoutePointDetailSerializer(instance=route_point_no_desc)
+        data = serializer.data
+
+        # Description should be null
+        self.assertIn("description", data)
+        self.assertIsNone(data["description"])
+
+    def test_serializer_excludes_extra_fields(self):
+        """Test that serializer excludes fields not in field list."""
+        serializer = RoutePointDetailSerializer(instance=self.route_point)
+        data = serializer.data
+
+        # These fields should NOT be present
+        self.assertNotIn("route", data)
+        self.assertNotIn("source", data)
+        self.assertNotIn("optimized_position", data)
+        self.assertNotIn("is_removed", data)
+        self.assertNotIn("added_at", data)
+        self.assertNotIn("created_at", data)
+        self.assertNotIn("updated_at", data)
+
+    def test_serializer_multiple_route_points(self):
+        """Test serializer works correctly with multiple instances."""
+        # Create second place and route point
+        place2 = Place.objects.create(
+            name="Palace of Culture",
+            lat=52.2319,
+            lon=21.0067,
+            address="Plac Defilad 1",
+        )
+
+        route_point2 = RoutePoint.objects.create(
+            route=self.route,
+            place=place2,
+            position=2,
+            source="ai_generated",
+        )
+
+        route_points = [self.route_point, route_point2]
+        serializer = RoutePointDetailSerializer(route_points, many=True)
+        data = serializer.data
+
+        self.assertEqual(len(data), 2)
+        self.assertEqual(data[0]["order"], 1)
+        self.assertEqual(data[0]["place"]["name"], "Royal Castle")
+        self.assertEqual(data[1]["order"], 2)
+        self.assertEqual(data[1]["place"]["name"], "Palace of Culture")
+
+    def test_serializer_read_only_fields(self):
+        """Test that serializer is designed for read-only operations."""
+        # This serializer is designed for read-only operations
+        # It should work for serialization (reading) but not deserialization (writing)
+        
+        # Test that we can serialize existing data
+        serializer = RoutePointDetailSerializer(instance=self.route_point)
+        data = serializer.data
+        
+        # Verify serialization works
+        self.assertIsNotNone(data)
+        self.assertEqual(data["order"], 1)
+        self.assertEqual(data["place"]["name"], "Royal Castle")
+        
+        # The serializer is meant for nested read-only use in route detail view,
+        # not for accepting input data directly
+
+    def test_serializer_ordering_by_position(self):
+        """Test that multiple route points maintain correct order."""
+        # Create multiple route points with different positions
+        place2 = Place.objects.create(name="Place 2", lat=52.0, lon=21.0)
+        place3 = Place.objects.create(name="Place 3", lat=52.1, lon=21.1)
+
+        route_point2 = RoutePoint.objects.create(
+            route=self.route, place=place2, position=5, source="manual"
+        )
+
+        route_point3 = RoutePoint.objects.create(
+            route=self.route, place=place3, position=3, source="manual"
+        )
+
+        # Serialize in order
+        route_points = [self.route_point, route_point3, route_point2]
+        serializer = RoutePointDetailSerializer(route_points, many=True)
+        data = serializer.data
+
+        # Check that order values match position values
+        self.assertEqual(data[0]["order"], 1)
+        self.assertEqual(data[1]["order"], 3)
+        self.assertEqual(data[2]["order"], 5)
