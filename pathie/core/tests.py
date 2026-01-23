@@ -351,8 +351,8 @@ class RouteDeleteAPIViewTests(TestCase):
         # Verify route was not deleted
         self.assertTrue(Route.objects.filter(id=self.route1.id).exists())
 
-    def test_delete_route_only_delete_method_allowed(self):
-        """Test that only GET and DELETE methods are allowed for route detail endpoint."""
+    def test_delete_route_allowed_methods(self):
+        """Test that GET, PATCH, and DELETE methods are allowed for route detail endpoint."""
         # Authenticate as user1
         self.client.credentials(HTTP_AUTHORIZATION=f"Token {self.token1.key}")
 
@@ -362,16 +362,16 @@ class RouteDeleteAPIViewTests(TestCase):
         response = self.client.get(url)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
 
+        # PATCH method should work (updates route)
+        response = self.client.patch(url, {"name": "Updated via PATCH"}, format="json")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
         # Try POST method - should fail
         response = self.client.post(url, {})
         self.assertEqual(response.status_code, status.HTTP_405_METHOD_NOT_ALLOWED)
 
         # Try PUT method - should fail
         response = self.client.put(url, {})
-        self.assertEqual(response.status_code, status.HTTP_405_METHOD_NOT_ALLOWED)
-
-        # Try PATCH method - should fail
-        response = self.client.patch(url, {})
         self.assertEqual(response.status_code, status.HTTP_405_METHOD_NOT_ALLOWED)
 
         # Verify route still exists
@@ -1289,3 +1289,515 @@ class RouteServiceTests(TestCase):
 
         # Should still work with fallback
         self.assertEqual(len(optimized_points), 2)
+
+
+class RouteUpdateServiceTests(TestCase):
+    """
+    Test suite for RouteService.update_route() method.
+    Tests route name and status updates, saved_at timestamp logic, and validation.
+    """
+
+    def setUp(self):
+        """Set up test data for route update tests."""
+        # Create test user
+        self.user = User.objects.create_user(
+            username="testuser",
+            email="testuser@example.com",
+            password="testpass123",
+        )
+
+        # Create temporary route
+        self.temp_route = Route.objects.create(
+            user=self.user,
+            name="Temporary Route",
+            status=Route.STATUS_TEMPORARY,
+            route_type=Route.TYPE_AI_GENERATED,
+        )
+
+        # Create saved route
+        self.saved_route = Route.objects.create(
+            user=self.user,
+            name="Saved Route",
+            status=Route.STATUS_SAVED,
+            route_type=Route.TYPE_MANUAL,
+        )
+
+    def test_update_route_name_only(self):
+        """Test updating only the route name."""
+        from .services import RouteService
+
+        # Update name only
+        validated_data = {"name": "New Route Name"}
+        updated_route = RouteService.update_route(self.temp_route, validated_data)
+
+        # Verify name was updated
+        self.assertEqual(updated_route.name, "New Route Name")
+        # Verify status remained unchanged
+        self.assertEqual(updated_route.status, Route.STATUS_TEMPORARY)
+        # Verify saved_at is still None
+        self.assertIsNone(updated_route.saved_at)
+
+    def test_update_route_status_only(self):
+        """Test updating only the route status."""
+        from .services import RouteService
+
+        # Update status only
+        validated_data = {"status": Route.STATUS_SAVED}
+        updated_route = RouteService.update_route(self.temp_route, validated_data)
+
+        # Verify status was updated
+        self.assertEqual(updated_route.status, Route.STATUS_SAVED)
+        # Verify name remained unchanged
+        self.assertEqual(updated_route.name, "Temporary Route")
+        # Verify saved_at was set
+        self.assertIsNotNone(updated_route.saved_at)
+
+    def test_update_route_name_and_status(self):
+        """Test updating both name and status together."""
+        from .services import RouteService
+
+        # Update both fields
+        validated_data = {
+            "name": "My Trip to Paris",
+            "status": Route.STATUS_SAVED,
+        }
+        updated_route = RouteService.update_route(self.temp_route, validated_data)
+
+        # Verify both fields were updated
+        self.assertEqual(updated_route.name, "My Trip to Paris")
+        self.assertEqual(updated_route.status, Route.STATUS_SAVED)
+        # Verify saved_at was set
+        self.assertIsNotNone(updated_route.saved_at)
+
+    def test_update_route_sets_saved_at_when_status_changes_to_saved(self):
+        """Test that saved_at timestamp is set when status changes to saved."""
+        from .services import RouteService
+        from django.utils import timezone
+
+        # Verify initial state
+        self.assertIsNone(self.temp_route.saved_at)
+        self.assertEqual(self.temp_route.status, Route.STATUS_TEMPORARY)
+
+        # Record time before update
+        time_before = timezone.now()
+
+        # Update status to saved
+        validated_data = {"status": Route.STATUS_SAVED}
+        updated_route = RouteService.update_route(self.temp_route, validated_data)
+
+        # Record time after update
+        time_after = timezone.now()
+
+        # Verify saved_at was set
+        self.assertIsNotNone(updated_route.saved_at)
+        # Verify saved_at is between time_before and time_after
+        self.assertGreaterEqual(updated_route.saved_at, time_before)
+        self.assertLessEqual(updated_route.saved_at, time_after)
+
+    def test_update_route_does_not_change_saved_at_when_already_saved(self):
+        """Test that saved_at is not changed when updating an already saved route."""
+        from .services import RouteService
+        from django.utils import timezone
+
+        # Set initial saved_at
+        original_saved_at = timezone.now()
+        self.saved_route.saved_at = original_saved_at
+        self.saved_route.save()
+
+        # Update name only (status remains saved)
+        validated_data = {"name": "Updated Saved Route"}
+        updated_route = RouteService.update_route(self.saved_route, validated_data)
+
+        # Verify saved_at was not changed
+        self.assertEqual(updated_route.saved_at, original_saved_at)
+
+    def test_update_route_does_not_set_saved_at_when_status_stays_temporary(self):
+        """Test that saved_at remains None when status stays temporary."""
+        from .services import RouteService
+
+        # Update name while keeping status temporary
+        validated_data = {"name": "Still Temporary"}
+        updated_route = RouteService.update_route(self.temp_route, validated_data)
+
+        # Verify saved_at is still None
+        self.assertIsNone(updated_route.saved_at)
+
+    def test_update_route_persists_to_database(self):
+        """Test that updates are actually saved to database."""
+        from .services import RouteService
+
+        # Update route
+        validated_data = {
+            "name": "Database Test Route",
+            "status": Route.STATUS_SAVED,
+        }
+        RouteService.update_route(self.temp_route, validated_data)
+
+        # Refresh from database
+        self.temp_route.refresh_from_db()
+
+        # Verify changes persisted
+        self.assertEqual(self.temp_route.name, "Database Test Route")
+        self.assertEqual(self.temp_route.status, Route.STATUS_SAVED)
+        self.assertIsNotNone(self.temp_route.saved_at)
+
+    def test_update_route_with_empty_validated_data(self):
+        """Test update with empty validated_data (no changes)."""
+        from .services import RouteService
+
+        # Store original values
+        original_name = self.temp_route.name
+        original_status = self.temp_route.status
+
+        # Update with empty data
+        validated_data = {}
+        updated_route = RouteService.update_route(self.temp_route, validated_data)
+
+        # Verify nothing changed
+        self.assertEqual(updated_route.name, original_name)
+        self.assertEqual(updated_route.status, original_status)
+        self.assertIsNone(updated_route.saved_at)
+
+    def test_update_route_transaction_atomicity(self):
+        """Test that update is atomic (all or nothing)."""
+        from .services import RouteService
+
+        # This test verifies that the @transaction.atomic decorator is working
+        # In case of any error, changes should be rolled back
+
+        # Update route successfully
+        validated_data = {"name": "Atomic Test"}
+        updated_route = RouteService.update_route(self.temp_route, validated_data)
+
+        # Verify update succeeded
+        self.assertEqual(updated_route.name, "Atomic Test")
+
+        # Refresh from database to ensure it was committed
+        self.temp_route.refresh_from_db()
+        self.assertEqual(self.temp_route.name, "Atomic Test")
+
+    def test_update_route_updated_at_timestamp(self):
+        """Test that updated_at timestamp is automatically updated."""
+        from .services import RouteService
+        from django.utils import timezone
+        import time
+
+        # Store original updated_at
+        original_updated_at = self.temp_route.updated_at
+
+        # Wait a moment to ensure timestamp difference
+        time.sleep(0.01)
+
+        # Update route
+        validated_data = {"name": "Timestamp Test"}
+        updated_route = RouteService.update_route(self.temp_route, validated_data)
+
+        # Verify updated_at changed
+        self.assertGreater(updated_route.updated_at, original_updated_at)
+
+    def test_update_route_changing_status_from_saved_to_temporary(self):
+        """Test changing status from saved back to temporary (edge case)."""
+        from .services import RouteService
+        from django.utils import timezone
+
+        # Set route as saved with saved_at timestamp
+        self.saved_route.saved_at = timezone.now()
+        self.saved_route.save()
+        original_saved_at = self.saved_route.saved_at
+
+        # Change status back to temporary
+        validated_data = {"status": Route.STATUS_TEMPORARY}
+        updated_route = RouteService.update_route(self.saved_route, validated_data)
+
+        # Verify status changed
+        self.assertEqual(updated_route.status, Route.STATUS_TEMPORARY)
+        # Verify saved_at was not modified (keeps original timestamp)
+        self.assertEqual(updated_route.saved_at, original_saved_at)
+
+
+# -----------------------------------------------------------------------------
+# Route PATCH Endpoint Tests
+# -----------------------------------------------------------------------------
+
+
+class RoutePatchAPIViewTests(TestCase):
+    """
+    Test suite for route PATCH endpoint.
+    Tests PATCH /api/routes/{id}/ endpoint functionality for updating routes.
+    """
+
+    def setUp(self):
+        """Set up test client, users, and test routes."""
+        self.client = APIClient()
+
+        # Create two test users
+        self.user1 = User.objects.create_user(
+            username="user1@example.com",
+            email="user1@example.com",
+            password="testpass123",
+            is_active=True,
+        )
+        self.user2 = User.objects.create_user(
+            username="user2@example.com",
+            email="user2@example.com",
+            password="testpass123",
+            is_active=True,
+        )
+
+        # Create tokens for authentication
+        self.token1 = Token.objects.create(user=self.user1)
+        self.token2 = Token.objects.create(user=self.user2)
+
+        # Create test routes for user1
+        self.temp_route = Route.objects.create(
+            user=self.user1,
+            name="Temporary Route",
+            status=Route.STATUS_TEMPORARY,
+            route_type=Route.TYPE_AI_GENERATED,
+        )
+        self.saved_route = Route.objects.create(
+            user=self.user1,
+            name="Saved Route",
+            status=Route.STATUS_SAVED,
+            route_type=Route.TYPE_MANUAL,
+        )
+
+        # Create test route for user2
+        self.user2_route = Route.objects.create(
+            user=self.user2,
+            name="User 2 Route",
+            status=Route.STATUS_TEMPORARY,
+            route_type=Route.TYPE_MANUAL,
+        )
+
+    def test_patch_route_update_name_success(self):
+        """Test successful update of route name."""
+        # Authenticate as user1
+        self.client.credentials(HTTP_AUTHORIZATION=f"Token {self.token1.key}")
+
+        # Update name
+        url = f"/api/routes/{self.temp_route.id}/"
+        data = {"name": "Updated Route Name"}
+        response = self.client.patch(url, data, format="json")
+
+        # Verify response
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["name"], "Updated Route Name")
+        self.assertEqual(response.data["status"], Route.STATUS_TEMPORARY)
+        self.assertIsNone(response.data["saved_at"])
+
+        # Verify database was updated
+        self.temp_route.refresh_from_db()
+        self.assertEqual(self.temp_route.name, "Updated Route Name")
+
+    def test_patch_route_update_status_success(self):
+        """Test successful update of route status to saved."""
+        # Authenticate as user1
+        self.client.credentials(HTTP_AUTHORIZATION=f"Token {self.token1.key}")
+
+        # Update status to saved
+        url = f"/api/routes/{self.temp_route.id}/"
+        data = {"status": Route.STATUS_SAVED}
+        response = self.client.patch(url, data, format="json")
+
+        # Verify response
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["status"], Route.STATUS_SAVED)
+        self.assertIsNotNone(response.data["saved_at"])
+
+        # Verify database was updated
+        self.temp_route.refresh_from_db()
+        self.assertEqual(self.temp_route.status, Route.STATUS_SAVED)
+        self.assertIsNotNone(self.temp_route.saved_at)
+
+    def test_patch_route_update_name_and_status_success(self):
+        """Test successful update of both name and status."""
+        # Authenticate as user1
+        self.client.credentials(HTTP_AUTHORIZATION=f"Token {self.token1.key}")
+
+        # Update both fields
+        url = f"/api/routes/{self.temp_route.id}/"
+        data = {
+            "name": "My Trip to Paris",
+            "status": Route.STATUS_SAVED,
+        }
+        response = self.client.patch(url, data, format="json")
+
+        # Verify response
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["name"], "My Trip to Paris")
+        self.assertEqual(response.data["status"], Route.STATUS_SAVED)
+        self.assertIsNotNone(response.data["saved_at"])
+
+        # Verify database was updated
+        self.temp_route.refresh_from_db()
+        self.assertEqual(self.temp_route.name, "My Trip to Paris")
+        self.assertEqual(self.temp_route.status, Route.STATUS_SAVED)
+
+    def test_patch_route_unauthorized(self):
+        """Test PATCH without authentication returns 401."""
+        # No authentication
+        url = f"/api/routes/{self.temp_route.id}/"
+        data = {"name": "Unauthorized Update"}
+        response = self.client.patch(url, data, format="json")
+
+        # Verify response
+        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+
+        # Verify route was not updated
+        self.temp_route.refresh_from_db()
+        self.assertEqual(self.temp_route.name, "Temporary Route")
+
+    def test_patch_route_other_user_returns_404(self):
+        """Test user cannot update another user's route (returns 404)."""
+        # Authenticate as user2
+        self.client.credentials(HTTP_AUTHORIZATION=f"Token {self.token2.key}")
+
+        # Try to update user1's route
+        url = f"/api/routes/{self.temp_route.id}/"
+        data = {"name": "Hacked Name"}
+        response = self.client.patch(url, data, format="json")
+
+        # Verify response (404 for security - don't reveal existence)
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+
+        # Verify route was not updated
+        self.temp_route.refresh_from_db()
+        self.assertEqual(self.temp_route.name, "Temporary Route")
+
+    def test_patch_route_invalid_status(self):
+        """Test PATCH with invalid status returns 400."""
+        # Authenticate as user1
+        self.client.credentials(HTTP_AUTHORIZATION=f"Token {self.token1.key}")
+
+        # Try to update with invalid status
+        url = f"/api/routes/{self.temp_route.id}/"
+        data = {"status": "invalid_status"}
+        response = self.client.patch(url, data, format="json")
+
+        # Verify response
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("status", response.data)
+
+        # Verify route was not updated
+        self.temp_route.refresh_from_db()
+        self.assertEqual(self.temp_route.status, Route.STATUS_TEMPORARY)
+
+    def test_patch_route_empty_name(self):
+        """Test PATCH with empty name returns 400."""
+        # Authenticate as user1
+        self.client.credentials(HTTP_AUTHORIZATION=f"Token {self.token1.key}")
+
+        # Try to update with empty name
+        url = f"/api/routes/{self.temp_route.id}/"
+        data = {"name": ""}
+        response = self.client.patch(url, data, format="json")
+
+        # Verify response
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("name", response.data)
+
+        # Verify route was not updated
+        self.temp_route.refresh_from_db()
+        self.assertEqual(self.temp_route.name, "Temporary Route")
+
+    def test_patch_route_name_too_long(self):
+        """Test PATCH with name exceeding 500 characters returns 400."""
+        # Authenticate as user1
+        self.client.credentials(HTTP_AUTHORIZATION=f"Token {self.token1.key}")
+
+        # Try to update with very long name
+        url = f"/api/routes/{self.temp_route.id}/"
+        data = {"name": "A" * 501}  # 501 characters
+        response = self.client.patch(url, data, format="json")
+
+        # Verify response
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("name", response.data)
+
+        # Verify route was not updated
+        self.temp_route.refresh_from_db()
+        self.assertEqual(self.temp_route.name, "Temporary Route")
+
+    def test_patch_route_whitespace_only_name(self):
+        """Test PATCH with whitespace-only name returns 400."""
+        # Authenticate as user1
+        self.client.credentials(HTTP_AUTHORIZATION=f"Token {self.token1.key}")
+
+        # Try to update with whitespace-only name
+        url = f"/api/routes/{self.temp_route.id}/"
+        data = {"name": "   "}
+        response = self.client.patch(url, data, format="json")
+
+        # Verify response
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("name", response.data)
+
+    def test_patch_route_not_found(self):
+        """Test PATCH with non-existent route ID returns 404."""
+        # Authenticate as user1
+        self.client.credentials(HTTP_AUTHORIZATION=f"Token {self.token1.key}")
+
+        # Try to update non-existent route
+        url = "/api/routes/99999/"
+        data = {"name": "Non-existent"}
+        response = self.client.patch(url, data, format="json")
+
+        # Verify response
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+
+    def test_patch_route_response_contains_all_fields(self):
+        """Test that PATCH response contains all expected fields."""
+        # Authenticate as user1
+        self.client.credentials(HTTP_AUTHORIZATION=f"Token {self.token1.key}")
+
+        # Update route
+        url = f"/api/routes/{self.temp_route.id}/"
+        data = {"name": "Complete Response Test"}
+        response = self.client.patch(url, data, format="json")
+
+        # Verify response contains all expected fields
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        expected_fields = {
+            "id",
+            "name",
+            "status",
+            "route_type",
+            "saved_at",
+            "created_at",
+            "updated_at",
+        }
+        self.assertEqual(set(response.data.keys()), expected_fields)
+
+    def test_patch_route_partial_update_allowed(self):
+        """Test that PATCH allows partial updates (not all fields required)."""
+        # Authenticate as user1
+        self.client.credentials(HTTP_AUTHORIZATION=f"Token {self.token1.key}")
+
+        # Update only name (status not provided)
+        url = f"/api/routes/{self.temp_route.id}/"
+        data = {"name": "Partial Update"}
+        response = self.client.patch(url, data, format="json")
+
+        # Verify success
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["name"], "Partial Update")
+        self.assertEqual(response.data["status"], Route.STATUS_TEMPORARY)
+
+    def test_patch_route_name_trimmed(self):
+        """Test that route name is automatically trimmed of whitespace."""
+        # Authenticate as user1
+        self.client.credentials(HTTP_AUTHORIZATION=f"Token {self.token1.key}")
+
+        # Update with name that has leading/trailing whitespace
+        url = f"/api/routes/{self.temp_route.id}/"
+        data = {"name": "  Trimmed Name  "}
+        response = self.client.patch(url, data, format="json")
+
+        # Verify response has trimmed name
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["name"], "Trimmed Name")
+
+        # Verify database has trimmed name
+        self.temp_route.refresh_from_db()
+        self.assertEqual(self.temp_route.name, "Trimmed Name")
