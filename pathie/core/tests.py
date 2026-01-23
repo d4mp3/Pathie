@@ -4,7 +4,12 @@ from rest_framework.test import APIClient
 from rest_framework.authtoken.models import Token
 from rest_framework import status
 
-from .models import Route, RoutePoint, Place, Rating
+from .models import Route, RoutePoint, Place, PlaceDescription, Rating
+from .serializers import (
+    PlaceSimpleSerializer,
+    PlaceDescriptionContentSerializer,
+    RoutePointDetailSerializer,
+)
 
 User = get_user_model()
 
