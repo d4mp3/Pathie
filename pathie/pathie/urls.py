@@ -26,6 +26,7 @@ from core.views import (
     RouteDetailAPIView,
     RouteOptimizeAPIView,
     RouteAddPointAPIView,
+    RoutePointDeleteAPIView,
 )
 
 urlpatterns = [
@@ -41,4 +42,5 @@ urlpatterns = [
     path("api/routes/<int:pk>/", RouteDetailAPIView.as_view(), name="api_route_detail"),
     path("api/routes/<int:pk>/optimize/", RouteOptimizeAPIView.as_view(), name="api_route_optimize"),
     path("api/routes/<int:pk>/points/", RouteAddPointAPIView.as_view(), name="api_route_add_point"),
+    path("api/routes/<int:pk>/points/<int:point_id>/", RoutePointDeleteAPIView.as_view(), name="api_route_point_delete"),
 ]

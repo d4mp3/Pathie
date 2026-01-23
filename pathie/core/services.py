@@ -279,3 +279,51 @@ class RouteService:
                 exc_info=True
             )
             raise
+
+    @staticmethod
+    @transaction.atomic
+    def soft_delete_point(route_point: RoutePoint) -> None:
+        """
+        Soft delete a route point by setting is_removed flag to True.
+        
+        This method marks a route point as removed without physically deleting it
+        from the database. This preserves the associated PlaceDescription and
+        AI-generated content while hiding the point from route queries.
+        
+        Args:
+            route_point: RoutePoint instance to soft delete
+            
+        Raises:
+            ValidationError: If the operation fails
+            
+        Example:
+            >>> point = RoutePoint.objects.get(id=123)
+            >>> RouteService.soft_delete_point(point)
+        
+        Notes:
+            - Sets is_removed = True
+            - Does not modify position or other fields
+            - Frontend should filter by is_removed=False when displaying points
+        """
+        logger.info(
+            f"Soft deleting route point: point_id={route_point.id}, "
+            f"route_id={route_point.route.id}, place_id={route_point.place.id}"
+        )
+        
+        # Set the is_removed flag
+        route_point.is_removed = True
+        
+        try:
+            # Save only the is_removed field for efficiency
+            route_point.save(update_fields=['is_removed'])
+            
+            logger.info(
+                f"Successfully soft deleted route point: point_id={route_point.id}"
+            )
+        except Exception as e:
+            logger.error(
+                f"Error during route point soft delete: "
+                f"point_id={route_point.id}, error={str(e)}",
+                exc_info=True
+            )
+            raise

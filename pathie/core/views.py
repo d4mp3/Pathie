@@ -1,3 +1,4 @@
+import logging
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status, generics
@@ -27,8 +28,10 @@ from .serializers import (
 from .models import Rating, Route, RoutePoint
 from .selectors import route_list_selector
 from .services import RouteService, BusinessLogicException
+from .permissions import IsRouteOwner
 
 User = get_user_model()
+logger = logging.getLogger(__name__)
 
 
 # -----------------------------------------------------------------------------
@@ -1108,5 +1111,123 @@ class RouteAddPointAPIView(APIView):
             )
             return Response(
                 {"detail": "Wystąpił błąd podczas dodawania punktu do trasy."},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+
+class RoutePointDeleteAPIView(APIView):
+    """
+    API endpoint for removing a specific point from a route (soft delete).
+
+    Marks a route point as removed by setting the is_removed flag to True.
+    This preserves the associated PlaceDescription and AI-generated content
+    while hiding the point from route queries.
+
+    **Endpoint:** DELETE /api/routes/{id}/points/{point_id}/
+
+    **Required Headers:**
+    - Authorization: Token <token_key>
+
+    **Path Parameters:**
+    - id: int - Unique identifier of the route
+    - point_id: int - Unique identifier of the route point to remove
+
+    **Request Body:** Empty
+
+    **Success Response (204 No Content):**
+    Empty response body
+
+    **Error Response (401 Unauthorized):**
+    ```json
+    {
+        "detail": "Nie podano danych uwierzytelniających."
+    }
+    ```
+
+    **Error Response (404 Not Found):**
+    ```json
+    {
+        "detail": "Nie znaleziono."
+    }
+    ```
+
+    **Security Features:**
+    - Requires authentication (IsAuthenticated permission)
+    - Automatic user isolation - users can only remove points from their own routes
+    - Returns 404 for non-existent points or points belonging to other users' routes
+    - Atomic transaction ensures data consistency
+
+    **Business Logic:**
+    - Implements soft delete (sets is_removed = True)
+    - Preserves PlaceDescription and AI-generated content
+    - Does not modify point positions
+    - Idempotent - can be called multiple times safely
+
+    **Performance:**
+    - Single database update operation
+    - Efficient indexed query on route_id and point_id
+    """
+
+    permission_classes = [IsAuthenticated, IsRouteOwner]
+
+    @transaction.atomic
+    def delete(self, request: Any, pk: int, point_id: int, *args: Any, **kwargs: Any) -> Response:
+        """
+        Handles DELETE requests for removing a route point (soft delete).
+
+        Validates that the point exists and belongs to the specified route,
+        checks user ownership, and marks the point as removed.
+
+        Args:
+            request: HTTP request object with authenticated user
+            pk: Primary key (ID) of the route
+            point_id: Primary key (ID) of the route point to remove
+
+        Returns:
+            Response: Empty response with 204 No Content status on success
+                     404 Not Found if route or point doesn't exist or belongs to another user
+        """
+        # Get the route belonging to the authenticated user
+        # This ensures user isolation - returns 404 if route doesn't exist
+        # or belongs to another user (security best practice)
+        route = get_object_or_404(Route, pk=pk, user=request.user)
+
+        # Get the route point belonging to this specific route
+        # This ensures that the point_id actually belongs to the route_id
+        # preventing logical errors where a user might try to delete a point
+        # from a different route
+        route_point = get_object_or_404(
+            RoutePoint,
+            pk=point_id,
+            route=route
+        )
+
+        # Check object-level permission (IsRouteOwner)
+        # This is redundant since we already filtered by user, but it's
+        # good practice for consistency with DRF permission system
+        self.check_object_permissions(request, route_point)
+
+        try:
+            # Perform soft delete via service layer
+            RouteService.soft_delete_point(route_point)
+
+            logger.info(
+                f"Route point soft deleted: point_id={point_id}, "
+                f"route_id={pk}, user_id={request.user.id}"
+            )
+
+            # Return 204 No Content (standard response for successful DELETE)
+            return Response(status=status.HTTP_204_NO_CONTENT)
+
+        except Exception as e:
+            # Log unexpected errors
+            logger.error(
+                f"Unexpected error during route point deletion: "
+                f"point_id={point_id}, route_id={pk}, user_id={request.user.id}, "
+                f"error={str(e)}",
+                exc_info=True
+            )
+            return Response(
+                {"detail": "Wystąpił błąd podczas usuwania punktu z trasy."},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
