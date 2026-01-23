@@ -25,14 +25,85 @@ from .serializers import (
     RoutePointDetailSerializer,
     RoutePointCreateSerializer,
     RoutePointSerializer,
+    TagSerializer,
 )
-from .models import Rating, Route, RoutePoint
+from .models import Rating, Route, RoutePoint, Tag
 from .selectors import route_list_selector
 from .services import RouteService, BusinessLogicException
 from .permissions import IsRouteOwner
 
 User = get_user_model()
 logger = logging.getLogger(__name__)
+
+
+# -----------------------------------------------------------------------------
+# Tag Views
+# -----------------------------------------------------------------------------
+
+
+class TagListView(generics.ListAPIView):
+    """
+    API endpoint for retrieving a list of available interest tags.
+
+    Returns all active tags that can be used when generating AI routes.
+    Tags are ordered by priority (descending) and name (ascending).
+
+    **Endpoint:** GET /api/tags/
+
+    **Required Headers:**
+    - Authorization: Token <token_key>
+
+    **Query Parameters:** None
+
+    **Success Response (200 OK):**
+    ```json
+    [
+        {
+            "id": 1,
+            "name": "History",
+            "description": "Historical landmarks and museums",
+            "is_active": true
+        },
+        {
+            "id": 2,
+            "name": "Nature",
+            "description": "Parks, gardens, and natural attractions",
+            "is_active": true
+        }
+    ]
+    ```
+
+    **Error Response (401 Unauthorized):**
+    ```json
+    {
+        "detail": "Nie podano danych uwierzytelniających."
+    }
+    ```
+
+    **Security Features:**
+    - Requires authentication (IsAuthenticated permission)
+    - Read-only endpoint (GET only)
+    - Returns only active tags (is_active=True)
+
+    **Performance:**
+    - No pagination (returns flat array)
+    - Small dataset (typically < 20 tags)
+    - Can be cached for 1 hour (tags rarely change)
+    - Ordered by priority and name for consistent display
+    """
+
+    permission_classes = [IsAuthenticated]
+    serializer_class = TagSerializer
+    pagination_class = None  # Disable pagination to return flat array
+
+    def get_queryset(self):
+        """
+        Return all active tags ordered by priority and name.
+
+        Returns:
+            QuerySet[Tag]: Active tags ordered by priority (desc) and name (asc)
+        """
+        return Tag.objects.filter(is_active=True).order_by('-priority', 'name')
 
 
 # -----------------------------------------------------------------------------
