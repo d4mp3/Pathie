@@ -377,7 +377,7 @@ class RoutePointCreateSerializer(serializers.ModelSerializer):
         
         Checks:
         - Route must be of type 'manual'
-        - Route must not exceed maximum point limit (50)
+        - Route must not exceed maximum point limit (10 for manual routes)
         
         Args:
             attrs: Dictionary containing validated field data
@@ -404,13 +404,13 @@ class RoutePointCreateSerializer(serializers.ModelSerializer):
                 code="route_type_invalid"
             )
         
-        # Validate point limit (max 50 points per route)
+        # Validate point limit (max 10 points per manual route)
         current_points_count = RoutePoint.objects.filter(
             route=route, 
             is_removed=False
         ).count()
         
-        if current_points_count >= 50:
+        if current_points_count >= 10:
             raise serializers.ValidationError(
                 "Max points limit reached.",
                 code="max_points_exceeded"

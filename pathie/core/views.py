@@ -1037,7 +1037,7 @@ class RouteAddPointAPIView(APIView):
 
     **Business Rules:**
     - Only manual routes can have points added (ai_generated routes are read-only)
-    - Maximum 50 points per route
+    - Maximum 10 points per manual route (enforced by database trigger)
     - Place deduplication by osm_id or wikipedia_id
     - Automatic position calculation (appends to end of route)
 
