@@ -177,11 +177,20 @@ class RouteService:
                 optimized_points = RouteService._nearest_neighbor_tsp(points)
 
             # Update positions in database
-            # Assign new positions (0-indexed)
+            # To avoid unique constraint violations during update, we need to:
+            # 1. First set all positions to temporary negative values
+            # 2. Then set them to final values
+            
+            # Step 1: Set temporary negative positions to avoid conflicts
             for idx, point in enumerate(optimized_points):
-                point.position = idx
-
-            # Bulk update for efficiency
+                point.position = -(idx + 1)  # Negative values: -1, -2, -3, etc.
+            
+            RoutePoint.objects.bulk_update(optimized_points, ['position'])
+            
+            # Step 2: Set final positions
+            for idx, point in enumerate(optimized_points):
+                point.position = idx  # Final values: 0, 1, 2, etc.
+            
             RoutePoint.objects.bulk_update(optimized_points, ['position'])
 
             logger.info(

@@ -858,3 +858,434 @@ class RoutePointDetailSerializerTests(TestCase):
         self.assertEqual(data[0]["order"], 1)
         self.assertEqual(data[1]["order"], 3)
         self.assertEqual(data[2]["order"], 5)
+
+
+# -----------------------------------------------------------------------------
+# Service Layer Tests
+# -----------------------------------------------------------------------------
+
+
+class RouteServiceTests(TestCase):
+    """
+    Test suite for RouteService business logic.
+    Tests optimization algorithm, validation rules, and error handling.
+    """
+
+    def setUp(self):
+        """Set up test data for route optimization tests."""
+        # Create test user
+        self.user = User.objects.create_user(
+            username="testuser",
+            email="testuser@example.com",
+            password="testpass123",
+        )
+
+        # Create manual route (can be optimized)
+        self.manual_route = Route.objects.create(
+            user=self.user,
+            name="Manual Test Route",
+            status=Route.STATUS_TEMPORARY,
+            route_type=Route.TYPE_MANUAL,
+        )
+
+        # Create AI-generated route (cannot be optimized)
+        self.ai_route = Route.objects.create(
+            user=self.user,
+            name="AI Test Route",
+            status=Route.STATUS_SAVED,
+            route_type=Route.TYPE_AI_GENERATED,
+        )
+
+        # Create test places with specific coordinates for predictable optimization
+        # Warsaw Old Town area
+        self.place1 = Place.objects.create(
+            name="Royal Castle",
+            lat=52.2480,
+            lon=21.0153,
+            address="Plac Zamkowy 4",
+        )
+
+        self.place2 = Place.objects.create(
+            name="Old Town Market Square",
+            lat=52.2497,
+            lon=21.0122,
+            address="Rynek Starego Miasta",
+        )
+
+        self.place3 = Place.objects.create(
+            name="Barbican",
+            lat=52.2509,
+            lon=21.0089,
+            address="Nowomiejska 15/17",
+        )
+
+        self.place4 = Place.objects.create(
+            name="Palace of Culture",  # Far from Old Town
+            lat=52.2319,
+            lon=21.0067,
+            address="Plac Defilad 1",
+        )
+
+    def test_optimize_route_success_basic(self):
+        """Test successful optimization of a manual route with 3 points."""
+        from .services import RouteService
+
+        # Create route points in non-optimal order
+        RoutePoint.objects.create(
+            route=self.manual_route,
+            place=self.place1,
+            position=0,
+            source=RoutePoint.SOURCE_MANUAL,
+        )
+        RoutePoint.objects.create(
+            route=self.manual_route,
+            place=self.place3,  # Farthest from place1
+            position=1,
+            source=RoutePoint.SOURCE_MANUAL,
+        )
+        RoutePoint.objects.create(
+            route=self.manual_route,
+            place=self.place2,  # Between place1 and place3
+            position=2,
+            source=RoutePoint.SOURCE_MANUAL,
+        )
+
+        # Optimize route
+        optimized_points = RouteService.optimize_route(self.manual_route)
+
+        # Verify we got all points back
+        self.assertEqual(len(optimized_points), 3)
+
+        # Verify positions were updated (0, 1, 2)
+        positions = [point.position for point in optimized_points]
+        self.assertEqual(positions, [0, 1, 2])
+
+        # Verify first point is preserved (starting location)
+        self.assertEqual(optimized_points[0].place.id, self.place1.id)
+
+        # Verify optimization improved order (place2 should be between place1 and place3)
+        # Expected order: place1 -> place2 -> place3 (geographically logical)
+        self.assertEqual(optimized_points[1].place.id, self.place2.id)
+        self.assertEqual(optimized_points[2].place.id, self.place3.id)
+
+    def test_optimize_route_with_strategy_parameter(self):
+        """Test optimization with explicit strategy parameter."""
+        from .services import RouteService
+
+        # Create route points
+        RoutePoint.objects.create(
+            route=self.manual_route,
+            place=self.place1,
+            position=0,
+            source=RoutePoint.SOURCE_MANUAL,
+        )
+        RoutePoint.objects.create(
+            route=self.manual_route,
+            place=self.place2,
+            position=1,
+            source=RoutePoint.SOURCE_MANUAL,
+        )
+
+        # Test with nearest_neighbor strategy
+        config = {"strategy": "nearest_neighbor"}
+        optimized_points = RouteService.optimize_route(self.manual_route, config)
+
+        self.assertEqual(len(optimized_points), 2)
+        self.assertEqual(optimized_points[0].position, 0)
+        self.assertEqual(optimized_points[1].position, 1)
+
+    def test_optimize_route_with_tsp_approx_strategy(self):
+        """Test optimization with tsp_approx strategy."""
+        from .services import RouteService
+
+        # Create route points
+        RoutePoint.objects.create(
+            route=self.manual_route,
+            place=self.place1,
+            position=0,
+            source=RoutePoint.SOURCE_MANUAL,
+        )
+        RoutePoint.objects.create(
+            route=self.manual_route,
+            place=self.place2,
+            position=1,
+            source=RoutePoint.SOURCE_MANUAL,
+        )
+
+        # Test with tsp_approx strategy
+        config = {"strategy": "tsp_approx"}
+        optimized_points = RouteService.optimize_route(self.manual_route, config)
+
+        self.assertEqual(len(optimized_points), 2)
+
+    def test_optimize_route_fails_for_ai_generated(self):
+        """Test that optimization fails for AI-generated routes."""
+        from .services import RouteService, BusinessLogicException
+
+        # Create points for AI route
+        RoutePoint.objects.create(
+            route=self.ai_route,
+            place=self.place1,
+            position=0,
+            source=RoutePoint.SOURCE_AI_GENERATED,
+        )
+        RoutePoint.objects.create(
+            route=self.ai_route,
+            place=self.place2,
+            position=1,
+            source=RoutePoint.SOURCE_AI_GENERATED,
+        )
+
+        # Attempt to optimize AI route should raise BusinessLogicException
+        with self.assertRaises(BusinessLogicException) as context:
+            RouteService.optimize_route(self.ai_route)
+
+        self.assertIn("manual", str(context.exception).lower())
+
+    def test_optimize_route_fails_with_insufficient_points(self):
+        """Test that optimization fails when route has less than 2 points."""
+        from .services import RouteService, BusinessLogicException
+
+        # Create route with only 1 point
+        RoutePoint.objects.create(
+            route=self.manual_route,
+            place=self.place1,
+            position=0,
+            source=RoutePoint.SOURCE_MANUAL,
+        )
+
+        # Attempt to optimize should raise BusinessLogicException
+        with self.assertRaises(BusinessLogicException) as context:
+            RouteService.optimize_route(self.manual_route)
+
+        self.assertIn("2 punkty", str(context.exception))
+
+    def test_optimize_route_fails_with_zero_points(self):
+        """Test that optimization fails when route has no points."""
+        from .services import RouteService, BusinessLogicException
+
+        # Route has no points
+        with self.assertRaises(BusinessLogicException) as context:
+            RouteService.optimize_route(self.manual_route)
+
+        self.assertIn("2 punkty", str(context.exception))
+
+    def test_optimize_route_with_two_points(self):
+        """Test optimization with exactly 2 points (minimum valid case)."""
+        from .services import RouteService
+
+        # Create route with 2 points
+        RoutePoint.objects.create(
+            route=self.manual_route,
+            place=self.place1,
+            position=0,
+            source=RoutePoint.SOURCE_MANUAL,
+        )
+        RoutePoint.objects.create(
+            route=self.manual_route,
+            place=self.place2,
+            position=1,
+            source=RoutePoint.SOURCE_MANUAL,
+        )
+
+        # Optimize route
+        optimized_points = RouteService.optimize_route(self.manual_route)
+
+        # With 2 points, order should remain the same
+        self.assertEqual(len(optimized_points), 2)
+        self.assertEqual(optimized_points[0].place.id, self.place1.id)
+        self.assertEqual(optimized_points[1].place.id, self.place2.id)
+
+    def test_optimize_route_ignores_removed_points(self):
+        """Test that optimization ignores points marked as removed."""
+        from .services import RouteService
+
+        # Create route points
+        RoutePoint.objects.create(
+            route=self.manual_route,
+            place=self.place1,
+            position=0,
+            source=RoutePoint.SOURCE_MANUAL,
+            is_removed=False,
+        )
+        RoutePoint.objects.create(
+            route=self.manual_route,
+            place=self.place2,
+            position=1,
+            source=RoutePoint.SOURCE_MANUAL,
+            is_removed=True,  # This point should be ignored
+        )
+        RoutePoint.objects.create(
+            route=self.manual_route,
+            place=self.place3,
+            position=2,
+            source=RoutePoint.SOURCE_MANUAL,
+            is_removed=False,
+        )
+
+        # Optimize route
+        optimized_points = RouteService.optimize_route(self.manual_route)
+
+        # Should only include non-removed points
+        self.assertEqual(len(optimized_points), 2)
+        place_ids = [point.place.id for point in optimized_points]
+        self.assertIn(self.place1.id, place_ids)
+        self.assertIn(self.place3.id, place_ids)
+        self.assertNotIn(self.place2.id, place_ids)
+
+    def test_optimize_route_updates_database(self):
+        """Test that optimization actually updates positions in database."""
+        from .services import RouteService
+
+        # Create route points in specific order
+        point1 = RoutePoint.objects.create(
+            route=self.manual_route,
+            place=self.place1,
+            position=0,
+            source=RoutePoint.SOURCE_MANUAL,
+        )
+        point2 = RoutePoint.objects.create(
+            route=self.manual_route,
+            place=self.place4,  # Far away
+            position=1,
+            source=RoutePoint.SOURCE_MANUAL,
+        )
+        point3 = RoutePoint.objects.create(
+            route=self.manual_route,
+            place=self.place2,  # Close to place1
+            position=2,
+            source=RoutePoint.SOURCE_MANUAL,
+        )
+
+        # Optimize route
+        RouteService.optimize_route(self.manual_route)
+
+        # Refresh from database
+        point1.refresh_from_db()
+        point2.refresh_from_db()
+        point3.refresh_from_db()
+
+        # Verify positions were updated in database
+        # Place2 should now be closer to place1 in the order
+        self.assertEqual(point1.position, 0)  # First point stays first
+        self.assertEqual(point3.position, 1)  # Place2 should be second (closer)
+        self.assertEqual(point2.position, 2)  # Place4 should be last (farthest)
+
+    def test_optimize_route_with_many_points(self):
+        """Test optimization with larger number of points."""
+        from .services import RouteService
+
+        # Create 10 points
+        places = []
+        for i in range(10):
+            place = Place.objects.create(
+                name=f"Place {i}",
+                lat=52.2 + (i * 0.01),  # Spread out linearly
+                lon=21.0 + (i * 0.01),
+                address=f"Address {i}",
+            )
+            places.append(place)
+
+        # Create route points in random order
+        for idx, place in enumerate(places):
+            RoutePoint.objects.create(
+                route=self.manual_route,
+                place=place,
+                position=idx,
+                source=RoutePoint.SOURCE_MANUAL,
+            )
+
+        # Optimize route
+        optimized_points = RouteService.optimize_route(self.manual_route)
+
+        # Verify we got all points
+        self.assertEqual(len(optimized_points), 10)
+
+        # Verify all positions are unique and sequential
+        positions = sorted([point.position for point in optimized_points])
+        self.assertEqual(positions, list(range(10)))
+
+    def test_calculate_distance_method(self):
+        """Test the distance calculation helper method."""
+        from .services import RouteService
+
+        # Test distance between Royal Castle and Old Town Market Square
+        # These are about 200-300 meters apart
+        distance = RouteService._calculate_distance(
+            52.2480, 21.0153,  # Royal Castle
+            52.2497, 21.0122,  # Old Town Market Square
+        )
+
+        # Distance should be approximately 0.2-0.4 km
+        self.assertGreater(distance, 0.1)
+        self.assertLess(distance, 0.5)
+
+    def test_calculate_distance_same_point(self):
+        """Test distance calculation for the same point."""
+        from .services import RouteService
+
+        distance = RouteService._calculate_distance(
+            52.2480, 21.0153,
+            52.2480, 21.0153,
+        )
+
+        # Distance should be approximately 0
+        self.assertAlmostEqual(distance, 0.0, places=5)
+
+    def test_optimize_route_transaction_rollback_on_error(self):
+        """Test that optimization rolls back on error (transaction atomicity)."""
+        from .services import RouteService
+        from unittest.mock import patch
+
+        # Create valid route points
+        RoutePoint.objects.create(
+            route=self.manual_route,
+            place=self.place1,
+            position=0,
+            source=RoutePoint.SOURCE_MANUAL,
+        )
+        RoutePoint.objects.create(
+            route=self.manual_route,
+            place=self.place2,
+            position=1,
+            source=RoutePoint.SOURCE_MANUAL,
+        )
+
+        # Store original positions
+        original_count = RoutePoint.objects.filter(route=self.manual_route).count()
+
+        # Mock bulk_update to raise an exception
+        with patch.object(
+            RoutePoint.objects.__class__, 'bulk_update', side_effect=Exception("DB Error")
+        ):
+            with self.assertRaises(Exception):
+                RouteService.optimize_route(self.manual_route)
+
+        # Verify data is still intact (transaction rolled back)
+        current_count = RoutePoint.objects.filter(route=self.manual_route).count()
+        self.assertEqual(current_count, original_count)
+
+    def test_optimize_route_with_unknown_strategy(self):
+        """Test optimization with unknown strategy falls back to default."""
+        from .services import RouteService
+
+        # Create route points
+        RoutePoint.objects.create(
+            route=self.manual_route,
+            place=self.place1,
+            position=0,
+            source=RoutePoint.SOURCE_MANUAL,
+        )
+        RoutePoint.objects.create(
+            route=self.manual_route,
+            place=self.place2,
+            position=1,
+            source=RoutePoint.SOURCE_MANUAL,
+        )
+
+        # Test with unknown strategy (should fall back to nearest_neighbor)
+        config = {"strategy": "unknown_strategy"}
+        optimized_points = RouteService.optimize_route(self.manual_route, config)
+
+        # Should still work with fallback
+        self.assertEqual(len(optimized_points), 2)
