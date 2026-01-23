@@ -6,6 +6,8 @@ from rest_framework.authtoken.models import Token
 from rest_framework.throttling import AnonRateThrottle
 from rest_framework.pagination import PageNumberPagination
 from django.contrib.auth import get_user_model, logout
+from django.db import transaction
+from django.shortcuts import get_object_or_404
 from typing import Any
 
 from .serializers import (
@@ -15,7 +17,7 @@ from .serializers import (
     RatingSerializer,
     RouteListSerializer,
 )
-from .models import Rating
+from .models import Rating, Route
 from .selectors import route_list_selector
 
 User = get_user_model()
@@ -493,3 +495,87 @@ class RouteListAPIView(generics.ListAPIView):
             status_filter=status_filter,
             ordering=ordering,
         )
+
+
+class RouteDetailAPIView(APIView):
+    """
+    API endpoint for retrieving and deleting a specific route.
+
+    Provides operations on individual routes with automatic user isolation.
+
+    **Endpoint:** DELETE /api/routes/{id}/
+
+    **Required Headers:**
+    - Authorization: Token <token_key>
+
+    **Path Parameters:**
+    - id: int - Unique identifier of the route
+
+    **DELETE Success Response (204 No Content):**
+    Empty response body
+
+    **Error Response (401 Unauthorized):**
+    ```json
+    {
+        "detail": "Nie podano danych uwierzytelniających."
+    }
+    ```
+
+    **Error Response (404 Not Found):**
+    ```json
+    {
+        "detail": "Nie znaleziono."
+    }
+    ```
+
+    **Security Features:**
+    - Requires authentication (IsAuthenticated permission)
+    - Automatic user isolation - users can only delete their own routes
+    - Returns 404 for non-existent routes or routes belonging to other users
+    - Atomic transaction ensures data consistency during cascade deletion
+
+    **Cascade Deletion:**
+    When a route is deleted, the following related objects are automatically removed:
+    - RoutePoint (all points in the route)
+    - PlaceDescription (descriptions for each point)
+    - Rating (ratings for the route)
+    - AIGenerationLog (AI generation logs)
+    - RouteTag (tag associations)
+
+    Note: Place objects remain in the database as they may be referenced by other routes.
+    """
+
+    permission_classes = [IsAuthenticated]
+
+    @transaction.atomic
+    def delete(self, request: Any, pk: int, *args: Any, **kwargs: Any) -> Response:
+        """
+        Handles DELETE requests for removing a route.
+
+        Ensures the route belongs to the authenticated user before deletion.
+        Uses atomic transaction to ensure all related objects are deleted consistently.
+
+        Args:
+            request: HTTP request object with authenticated user
+            pk: Primary key (ID) of the route to delete
+
+        Returns:
+            Response: Empty response with 204 No Content status on success
+                     404 Not Found if route doesn't exist or belongs to another user
+        """
+        # Get route belonging to the authenticated user
+        # This ensures user isolation - returns 404 if route doesn't exist
+        # or belongs to another user (security best practice)
+        route = get_object_or_404(Route, pk=pk, user=request.user)
+
+        # Delete the route
+        # Cascade deletion of related objects is handled by database constraints:
+        # - route_points (ON DELETE CASCADE)
+        # - place_descriptions (via route_points, ON DELETE CASCADE)
+        # - ratings (ON DELETE CASCADE)
+        # - ai_generation_logs (ON DELETE CASCADE)
+        # - route_tags (ON DELETE CASCADE)
+        route.delete()
+
+        # Return 204 No Content (standard response for successful DELETE)
+        return Response(status=status.HTTP_204_NO_CONTENT)

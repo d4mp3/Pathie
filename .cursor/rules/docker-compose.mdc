@@ -5,9 +5,9 @@ alwaysApply: true
 Zasady wykonywania poleceń w projekcie:
 
 1. **Środowisko:** Aplikacja jest osadzona w Docker Compose. Wszystkie komendy systemowe, narzędziowe i aplikacyjne (Python, Django, Pip itp.) MUSZĄ być uruchamiane wewnątrz kontenera.
-2. **Główny Kontener:** Nazwa docelowego kontenera to `pathie-app-1`.
+2. **Główny Kontener:** Nazwa docelowego kontenera to `pathie-app`.
 3. **Formatowanie Komend:** Każda próba uruchomienia komendy takiej jak `python manage.py`, `pytest` czy `pip install` musi być poprzedzona prefiksem:
-   `docker exec -it pathie-app-1 <komenda>`
+   `docker exec -it pathie-app <komenda>`
 
 **Przykłady transformacji:**
 - Zamiast: `python manage.py migrate` -> Użyj: `docker exec -it pathie-app-1 python manage.py migrate`
@@ -16,4 +16,4 @@ Zasady wykonywania poleceń w projekcie:
 
 **Wyjątki:**
 - Komendy czysto gitowe (np. `git status`) wykonuj lokalnie.
-- Komendy `docker-compose up` lub `docker-compose down` wykonuj lokalnie.
+- Komendy `docker compose up` lub `docker compose down` wykonuj lokalnie.

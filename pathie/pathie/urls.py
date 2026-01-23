@@ -23,6 +23,7 @@ from core.views import (
     LogoutAPIView,
     RatingAPIView,
     RouteListAPIView,
+    RouteDetailAPIView,
 )
 
 urlpatterns = [
@@ -35,4 +36,5 @@ urlpatterns = [
     path("api/ratings/", RatingAPIView.as_view(), name="api_rating"),
     # API Routes endpoints
     path("api/routes/", RouteListAPIView.as_view(), name="api_route_list"),
+    path("api/routes/<int:pk>/", RouteDetailAPIView.as_view(), name="api_route_detail"),
 ]
