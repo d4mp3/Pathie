@@ -6,13 +6,15 @@ keeping views thin and focused on HTTP concerns.
 """
 
 import logging
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 from django.db import transaction
 from django.core.exceptions import ValidationError
 from django.utils import timezone
+from django.contrib.auth import get_user_model
 
-from .models import Route, RoutePoint, Place
+from .models import Route, RoutePoint, Place, Tag, RouteTag, AIGenerationLog
 
+User = get_user_model()
 logger = logging.getLogger(__name__)
 
 
@@ -28,6 +30,388 @@ class RouteService:
     """
     Service class for Route-related business logic.
     """
+
+    @staticmethod
+    @transaction.atomic
+    def create_route(user: User, validated_data: Dict[str, Any]) -> Route:
+        """
+        Create a new route based on route_type (ai_generated or manual).
+        
+        This is the main entry point for route creation, delegating to specific
+        methods based on the route type.
+        
+        Args:
+            user: User creating the route
+            validated_data: Dictionary with validated data from serializer
+                - route_type: 'ai_generated' or 'manual'
+                - tags: List of Tag objects (for AI generated)
+                - description: Optional description (for AI generated)
+                - name: Optional name (for manual)
+                
+        Returns:
+            Created Route instance with all related data
+            
+        Raises:
+            BusinessLogicException: If route creation fails
+            ValidationError: If data validation fails
+            
+        Example:
+            >>> route = RouteService.create_route(
+            ...     user=request.user,
+            ...     validated_data={
+            ...         'route_type': 'ai_generated',
+            ...         'tags': [tag1, tag2],
+            ...         'description': 'Museums in Warsaw'
+            ...     }
+            ... )
+        """
+        route_type = validated_data.get('route_type')
+        
+        logger.info(
+            f"Creating route: user_id={user.id}, route_type={route_type}"
+        )
+        
+        if route_type == Route.TYPE_AI_GENERATED:
+            return RouteService._create_ai_route(user, validated_data)
+        elif route_type == Route.TYPE_MANUAL:
+            return RouteService._create_manual_route(user, validated_data)
+        else:
+            raise BusinessLogicException(
+                f"Nieobsługiwany typ trasy: {route_type}"
+            )
+
+    @staticmethod
+    @transaction.atomic
+    def _create_manual_route(user: User, data: Dict[str, Any]) -> Route:
+        """
+        Create an empty manual route for user to add points manually.
+        
+        Creates a route with:
+        - Status: temporary (user needs to save it later)
+        - Type: manual
+        - Name: User-provided or default "My Custom Trip"
+        - No points initially
+        
+        Args:
+            user: User creating the route
+            data: Dictionary with validated data
+                - name: Optional route name
+                
+        Returns:
+            Created Route instance
+            
+        Example:
+            >>> route = RouteService._create_manual_route(
+            ...     user=request.user,
+            ...     data={'name': 'Trip to Krakow'}
+            ... )
+        """
+        name = data.get('name', '').strip()
+        if not name:
+            name = "My Custom Trip"
+        
+        logger.info(
+            f"Creating manual route: user_id={user.id}, name={name}"
+        )
+        
+        try:
+            route = Route.objects.create(
+                user=user,
+                name=name,
+                status=Route.STATUS_TEMPORARY,
+                route_type=Route.TYPE_MANUAL
+            )
+            
+            logger.info(
+                f"Successfully created manual route: route_id={route.id}, "
+                f"user_id={user.id}"
+            )
+            
+            return route
+            
+        except Exception as e:
+            logger.error(
+                f"Error creating manual route: user_id={user.id}, error={str(e)}",
+                exc_info=True
+            )
+            raise
+
+    @staticmethod
+    @transaction.atomic
+    def _create_ai_route(user: User, data: Dict[str, Any]) -> Route:
+        """
+        Create an AI-generated route with points and descriptions.
+        
+        This method orchestrates the AI generation process:
+        1. Creates Route object with temporary status
+        2. Associates tags with the route
+        3. Creates AIGenerationLog entry
+        4. Calls AI service to generate route points (SYNCHRONOUS in MVP)
+        5. Creates Place, RoutePoint, and PlaceDescription records
+        6. Updates AIGenerationLog with results
+        
+        Args:
+            user: User creating the route
+            data: Dictionary with validated data
+                - tags: List of Tag objects (1-3 tags)
+                - description: Optional additional context for AI
+                
+        Returns:
+            Created Route instance with all points and descriptions
+            
+        Raises:
+            BusinessLogicException: If AI generation fails
+            
+        Example:
+            >>> route = RouteService._create_ai_route(
+            ...     user=request.user,
+            ...     data={
+            ...         'tags': [tag1, tag2],
+            ...         'description': 'Interested in modern architecture'
+            ...     }
+            ... )
+        """
+        tags = data.get('tags', [])
+        description = data.get('description', '').strip()
+        
+        logger.info(
+            f"Creating AI-generated route: user_id={user.id}, "
+            f"tags={[tag.id for tag in tags]}, "
+            f"description_length={len(description)}"
+        )
+        
+        try:
+            # Step 1: Create Route object with temporary status
+            # Generate a temporary name based on tags
+            tag_names = [tag.name for tag in tags]
+            route_name = f"{', '.join(tag_names[:2])} Route"
+            if len(tag_names) > 2:
+                route_name = f"{tag_names[0]} & More Route"
+            
+            route = Route.objects.create(
+                user=user,
+                name=route_name,
+                status=Route.STATUS_TEMPORARY,
+                route_type=Route.TYPE_AI_GENERATED
+            )
+            
+            logger.info(f"Created route object: route_id={route.id}")
+            
+            # Step 2: Associate tags with route
+            route_tags = [RouteTag(route=route, tag=tag) for tag in tags]
+            RouteTag.objects.bulk_create(route_tags)
+            
+            logger.info(
+                f"Associated {len(tags)} tags with route: route_id={route.id}"
+            )
+            
+            # Step 3: Create AIGenerationLog entry
+            ai_log = AIGenerationLog.objects.create(
+                route=route,
+                model="mock-model-v1",  # Will be replaced with real model name
+                provider="mock",  # Will be replaced with real provider
+                tags_snapshot=[tag.name for tag in tags],
+                additional_text_snapshot=description if description else None
+            )
+            
+            logger.info(
+                f"Created AI generation log: log_id={ai_log.id}, route_id={route.id}"
+            )
+            
+            # Step 4: Call AI service to generate route points
+            # TODO: Replace with real AI service call
+            # For now, we'll use a mock implementation
+            generated_points = RouteService._mock_ai_generation(tags, description)
+            
+            logger.info(
+                f"AI generated {len(generated_points)} points for route_id={route.id}"
+            )
+            
+            # Step 5: Create Place, RoutePoint, and PlaceDescription records
+            RouteService._create_route_points_from_ai(route, generated_points)
+            
+            # Step 6: Update AIGenerationLog with results
+            ai_log.points_count = len(generated_points)
+            ai_log.save(update_fields=['points_count'])
+            
+            logger.info(
+                f"Successfully created AI-generated route: route_id={route.id}, "
+                f"points_count={len(generated_points)}"
+            )
+            
+            return route
+            
+        except Exception as e:
+            logger.error(
+                f"Error creating AI-generated route: user_id={user.id}, "
+                f"error={str(e)}",
+                exc_info=True
+            )
+            # Transaction will be rolled back automatically
+            raise BusinessLogicException(
+                "Nie udało się wygenerować trasy. Spróbuj ponownie później."
+            )
+
+    @staticmethod
+    def _mock_ai_generation(
+        tags: List[Tag],
+        description: str
+    ) -> List[Dict[str, Any]]:
+        """
+        Mock AI generation service for testing.
+        
+        Returns hardcoded test data that simulates AI-generated route points.
+        This will be replaced with real AI service integration.
+        
+        Args:
+            tags: List of Tag objects for route theme
+            description: Additional context from user
+            
+        Returns:
+            List of dictionaries with place data:
+            [
+                {
+                    'name': 'Place Name',
+                    'lat': 52.2297,
+                    'lon': 21.0122,
+                    'address': 'Street Address',
+                    'city': 'City',
+                    'country': 'Country',
+                    'osm_id': 'optional_osm_id',
+                    'wikipedia_id': 'optional_wiki_id',
+                    'description': 'AI-generated description of the place'
+                },
+                ...
+            ]
+        """
+        logger.info(
+            f"Mock AI generation called with tags={[t.name for t in tags]}, "
+            f"description={description[:50] if description else 'None'}"
+        )
+        
+        # Mock data - will be replaced with real AI service
+        return [
+            {
+                'name': 'Palace of Culture and Science',
+                'lat': 52.2319,
+                'lon': 21.0067,
+                'address': 'plac Defilad 1',
+                'city': 'Warsaw',
+                'country': 'Poland',
+                'osm_id': 'N123456',
+                'wikipedia_id': None,
+                'description': 'A notable landmark in Warsaw, offering panoramic views of the city.'
+            },
+            {
+                'name': 'Royal Castle',
+                'lat': 52.2480,
+                'lon': 21.0514,
+                'address': 'plac Zamkowy 4',
+                'city': 'Warsaw',
+                'country': 'Poland',
+                'osm_id': 'N789012',
+                'wikipedia_id': None,
+                'description': 'Historic royal residence with beautiful architecture and rich history.'
+            },
+            {
+                'name': 'Łazienki Park',
+                'lat': 52.2156,
+                'lon': 21.0352,
+                'address': 'Agrykoli 1',
+                'city': 'Warsaw',
+                'country': 'Poland',
+                'osm_id': None,
+                'wikipedia_id': 'Q654321',
+                'description': 'Beautiful park with palace, peacocks, and Chopin monument.'
+            }
+        ]
+
+    @staticmethod
+    def _create_route_points_from_ai(
+        route: Route,
+        generated_points: List[Dict[str, Any]]
+    ) -> None:
+        """
+        Create Place, RoutePoint, and PlaceDescription records from AI output.
+        
+        For each generated point:
+        1. Check if Place exists (by osm_id or wikipedia_id)
+        2. Create Place if it doesn't exist
+        3. Create RoutePoint linking Route and Place
+        4. Create PlaceDescription with AI-generated content
+        
+        Args:
+            route: Route instance to add points to
+            generated_points: List of dictionaries with place data from AI
+            
+        Raises:
+            Exception: If database operations fail
+        """
+        from .models import PlaceDescription  # Import here to avoid circular import
+        
+        logger.info(
+            f"Creating {len(generated_points)} route points for route_id={route.id}"
+        )
+        
+        for position, point_data in enumerate(generated_points):
+            try:
+                # Extract data
+                description_text = point_data.pop('description', '')
+                osm_id = point_data.get('osm_id')
+                wikipedia_id = point_data.get('wikipedia_id')
+                
+                # Step 1 & 2: Find or create Place
+                place = None
+                
+                # Try to find by osm_id first
+                if osm_id:
+                    place = Place.objects.filter(osm_id=osm_id).first()
+                
+                # Try wikipedia_id if not found
+                if not place and wikipedia_id:
+                    place = Place.objects.filter(wikipedia_id=wikipedia_id).first()
+                
+                # Create new place if not found
+                if not place:
+                    place = Place.objects.create(**point_data)
+                    logger.info(
+                        f"Created new place: place_id={place.id}, name={place.name}"
+                    )
+                else:
+                    logger.info(
+                        f"Using existing place: place_id={place.id}, name={place.name}"
+                    )
+                
+                # Step 3: Create RoutePoint
+                route_point = RoutePoint.objects.create(
+                    route=route,
+                    place=place,
+                    position=position,
+                    source=RoutePoint.SOURCE_AI_GENERATED
+                )
+                
+                logger.info(
+                    f"Created route point: point_id={route_point.id}, "
+                    f"position={position}, place_id={place.id}"
+                )
+                
+                # Step 4: Create PlaceDescription if we have description text
+                if description_text:
+                    PlaceDescription.objects.create(
+                        route_point=route_point,
+                        content=description_text,
+                        language_code='pl'  # Default to Polish
+                    )
+                    logger.info(
+                        f"Created place description for route_point_id={route_point.id}"
+                    )
+                
+            except Exception as e:
+                logger.error(
+                    f"Error creating route point at position {position}: {str(e)}",
+                    exc_info=True
+                )
+                raise
 
     @staticmethod
     @transaction.atomic

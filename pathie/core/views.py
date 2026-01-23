@@ -19,6 +19,7 @@ from .serializers import (
     RatingSerializer,
     RouteListSerializer,
     RouteDetailSerializer,
+    RouteCreateSerializer,
     RouteUpdateSerializer,
     RouteOptimizeInputSerializer,
     RoutePointDetailSerializer,
@@ -410,19 +411,21 @@ class StandardResultsSetPagination(PageNumberPagination):
     max_page_size = 100
 
 
-class RouteListAPIView(generics.ListAPIView):
+class RouteListAPIView(generics.ListCreateAPIView):
     """
-    API endpoint for retrieving a paginated list of user's routes.
+    API endpoint for retrieving a paginated list of user's routes and creating new routes.
 
-    Returns routes with basic information and points count, supporting filtering
-    by status and custom ordering.
+    Supports two operations:
+    1. GET - List user's routes with filtering and pagination
+    2. POST - Create new route (AI-generated or manual)
 
     **Endpoint:** GET /api/routes/
+    **Endpoint:** POST /api/routes/
 
     **Required Headers:**
     - Authorization: Token <token_key>
 
-    **Query Parameters:**
+    **GET Query Parameters:**
     - page: int - Page number for pagination (default: 1)
     - page_size: int - Number of items per page (default: 10, max: 100)
     - status: str - Filter by route status ('temporary', 'saved', default: 'saved')
@@ -430,7 +433,7 @@ class RouteListAPIView(generics.ListAPIView):
                      'status', '-status', 'route_type', '-route_type', 'points_count', '-points_count')
                      Prefix with '-' for descending order (default: '-created_at')
 
-    **Success Response (200 OK):**
+    **GET Success Response (200 OK):**
     ```json
     {
         "count": 15,
@@ -450,6 +453,58 @@ class RouteListAPIView(generics.ListAPIView):
     }
     ```
 
+    **POST Request Body (AI Generated):**
+    ```json
+    {
+        "route_type": "ai_generated",
+        "tags": [1, 5],
+        "description": "Interesuje mnie architektura modernistyczna."
+    }
+    ```
+
+    **POST Request Body (Manual):**
+    ```json
+    {
+        "route_type": "manual",
+        "name": "Wycieczka do Krakowa"
+    }
+    ```
+
+    **POST Success Response (201 Created):**
+    ```json
+    {
+        "id": 102,
+        "name": "Modernist Architecture Tour",
+        "status": "temporary",
+        "route_type": "ai_generated",
+        "user_rating_value": null,
+        "points": [
+            {
+                "id": 505,
+                "order": 0,
+                "place": {
+                    "id": 200,
+                    "name": "Palace of Culture",
+                    "lat": 52.23,
+                    "lon": 21.01,
+                    "address": "plac Defilad 1"
+                },
+                "description": {
+                    "id": 901,
+                    "content": "A notable landmark..."
+                }
+            }
+        ]
+    }
+    ```
+
+    **Error Response (400 Bad Request):**
+    ```json
+    {
+        "tags": ["Tagi są wymagane dla tras generowanych przez AI."]
+    }
+    ```
+
     **Error Response (401 Unauthorized):**
     ```json
     {
@@ -457,28 +512,33 @@ class RouteListAPIView(generics.ListAPIView):
     }
     ```
 
-    **Error Response (400 Bad Request):**
-    ```json
-    {
-        "detail": "Nieprawidłowe parametry zapytania."
-    }
-    ```
-
     **Security Features:**
     - Requires authentication (IsAuthenticated permission)
     - Automatic user isolation - users only see their own routes
     - Query parameter validation to prevent SQL injection
-    - Efficient database queries with annotations to prevent N+1 problems
+    - Rate limiting recommended for AI generation (10/hour)
 
     **Performance Optimizations:**
     - Uses annotated points_count to avoid N+1 queries
     - Leverages database indexes on (user, status, created_at)
     - Pagination limits data transfer and processing
+    - AI generation is synchronous in MVP (will be async in future)
     """
 
     permission_classes = [IsAuthenticated]
-    serializer_class = RouteListSerializer
     pagination_class = StandardResultsSetPagination
+
+    def get_serializer_class(self):
+        """
+        Return appropriate serializer class based on request method.
+        
+        Returns:
+            RouteCreateSerializer for POST requests
+            RouteListSerializer for GET requests
+        """
+        if self.request.method == 'POST':
+            return RouteCreateSerializer
+        return RouteListSerializer
 
     def get_queryset(self) -> Any:
         """
@@ -506,6 +566,87 @@ class RouteListAPIView(generics.ListAPIView):
             status_filter=status_filter,
             ordering=ordering,
         )
+
+    def create(self, request: Any, *args: Any, **kwargs: Any) -> Response:
+        """
+        Handle POST requests to create a new route.
+        
+        Validates input data, delegates to RouteService for business logic,
+        and returns the created route with full details.
+        
+        Args:
+            request: HTTP request with route data
+            
+        Returns:
+            Response with created route data (201 Created)
+            
+        Raises:
+            ValidationError: If input data is invalid (400 Bad Request)
+            BusinessLogicException: If route creation fails (500 Internal Server Error)
+        """
+        # Validate input data
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        
+        try:
+            # Delegate to service layer for route creation
+            route = RouteService.create_route(
+                user=request.user,
+                validated_data=serializer.validated_data
+            )
+            
+            logger.info(
+                f"Route created successfully: route_id={route.id}, "
+                f"user_id={request.user.id}, route_type={route.route_type}"
+            )
+            
+            # Fetch the created route with all related data for response
+            # Use the same queryset structure as RouteDetailAPIView
+            route_with_details = Route.objects.filter(id=route.id).prefetch_related(
+                Prefetch(
+                    'points',
+                    queryset=RoutePoint.objects.filter(is_removed=False)
+                    .select_related('place')
+                    .prefetch_related('description')
+                    .order_by('position')
+                )
+            ).annotate(
+                user_rating_value=Subquery(
+                    Rating.objects.filter(
+                        route=OuterRef('id'),
+                        user=request.user,
+                        rating_type=Rating.TYPE_ROUTE
+                    ).values('rating_value')[:1],
+                    output_field=IntegerField()
+                )
+            ).first()
+            
+            # Serialize the response
+            response_serializer = RouteDetailSerializer(route_with_details)
+            
+            return Response(
+                response_serializer.data,
+                status=status.HTTP_201_CREATED
+            )
+            
+        except BusinessLogicException as e:
+            logger.error(
+                f"Business logic error during route creation: {str(e)}",
+                exc_info=True
+            )
+            return Response(
+                {"detail": str(e)},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+        except Exception as e:
+            logger.error(
+                f"Unexpected error during route creation: {str(e)}",
+                exc_info=True
+            )
+            return Response(
+                {"detail": "Wystąpił nieoczekiwany błąd. Spróbuj ponownie później."},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
 
 
 class RouteDetailAPIView(APIView):

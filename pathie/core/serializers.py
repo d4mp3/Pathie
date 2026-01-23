@@ -527,57 +527,128 @@ class RouteDetailSerializer(serializers.ModelSerializer):
         ]
 
 
-class RouteCreateSerializer(serializers.ModelSerializer):
+class RouteCreateSerializer(serializers.Serializer):
     """
     Command Model for creating a Route.
     Handles 'ai_generated' vs 'manual' validation logic and Tag association.
+    
+    Supports two route creation modes:
+    1. AI Generated: Requires tags (1-3), optional description (max 1000 chars)
+    2. Manual: Optional name, creates empty route for manual point addition
     """
 
+    route_type = serializers.ChoiceField(
+        choices=Route.TYPE_CHOICES,
+        required=True,
+        error_messages={
+            "required": "Typ trasy jest wymagany.",
+            "invalid_choice": "Nieprawidłowy typ trasy. Dozwolone wartości: 'ai_generated', 'manual'."
+        }
+    )
+    
     tags = serializers.PrimaryKeyRelatedField(
-        queryset=Tag.objects.all(), many=True, required=False
+        queryset=Tag.objects.filter(is_active=True),
+        many=True,
+        required=False,
+        error_messages={
+            "does_not_exist": "Tag o ID {pk_value} nie istnieje lub jest nieaktywny.",
+            "incorrect_type": "Nieprawidłowy typ danych dla tagów. Oczekiwano listy ID."
+        }
     )
+    
     description = serializers.CharField(
-        write_only=True, required=False, max_length=10000
+        write_only=True,
+        required=False,
+        allow_blank=True,
+        max_length=1000,
+        error_messages={
+            "max_length": "Opis nie może przekraczać 1000 znaków."
+        }
     )
-
-    class Meta:
-        model = Route
-        fields = ["route_type", "tags", "description", "name"]
+    
+    name = serializers.CharField(
+        required=False,
+        allow_blank=True,
+        max_length=500,
+        error_messages={
+            "max_length": "Nazwa trasy nie może przekraczać 500 znaków."
+        }
+    )
 
     def validate(self, data):
+        """
+        Cross-field validation for route creation.
+        
+        Validates that:
+        - AI generated routes have 1-3 tags
+        - Manual routes don't have tags or description (optional: could allow)
+        - Description is only provided for AI generated routes
+        
+        Args:
+            data: Dictionary with validated field data
+            
+        Returns:
+            Validated data dictionary
+            
+        Raises:
+            serializers.ValidationError: If validation rules are violated
+        """
         route_type = data.get("route_type")
+        tags = data.get("tags", [])
+        description = data.get("description", "")
+        name = data.get("name", "")
 
-        if route_type == "ai_generated":
-            tags = data.get("tags", [])
+        if route_type == Route.TYPE_AI_GENERATED:
+            # AI generated routes require tags
             if not tags:
                 raise serializers.ValidationError(
-                    {"tags": "Tags are required for AI generated routes."}
+                    {"tags": "Tagi są wymagane dla tras generowanych przez AI."},
+                    code="tags_required"
                 )
-            if len(tags) > 3:
-                raise serializers.ValidationError({"tags": "Maximum 3 tags allowed."})
+            
+            # Validate tag count (1-3)
             if len(tags) < 1:
                 raise serializers.ValidationError(
-                    {"tags": "At least 1 tag is required."}
+                    {"tags": "Wymagany jest co najmniej 1 tag."},
+                    code="tags_min"
+                )
+            
+            if len(tags) > 3:
+                raise serializers.ValidationError(
+                    {"tags": "Maksymalnie 3 tagi są dozwolone."},
+                    code="tags_max"
+                )
+            
+            # Description is optional but validated if provided
+            if description and len(description.strip()) > 1000:
+                raise serializers.ValidationError(
+                    {"description": "Opis nie może przekraczać 1000 znaków."},
+                    code="description_too_long"
+                )
+        
+        elif route_type == Route.TYPE_MANUAL:
+            # Manual routes should not have tags (business rule for clarity)
+            if tags:
+                raise serializers.ValidationError(
+                    {"tags": "Tagi nie są dozwolone dla tras ręcznych."},
+                    code="tags_not_allowed"
+                )
+            
+            # Manual routes should not have description
+            if description:
+                raise serializers.ValidationError(
+                    {"description": "Opis nie jest dozwolony dla tras ręcznych."},
+                    code="description_not_allowed"
+                )
+            
+            # Name is optional, will default to "My Custom Trip" if not provided
+            if name and not name.strip():
+                raise serializers.ValidationError(
+                    {"name": "Nazwa trasy nie może być pusta."},
+                    code="name_empty"
                 )
 
         return data
-
-    @transaction.atomic
-    def create(self, validated_data):
-        tags = validated_data.pop("tags", [])
-        # Description is currently not stored on Route model (maybe used for AI generation trigger)
-        # If needed for AI Service, it should be handled there.
-        # We pop it so it doesn't cause error on Route.objects.create
-        _ = validated_data.pop("description", None)
-
-        # User should be passed in serializer.save(user=request.user)
-        route = Route.objects.create(**validated_data)
-
-        if tags:
-            route_tags = [RouteTag(route=route, tag=tag) for tag in tags]
-            RouteTag.objects.bulk_create(route_tags)
-
-        return route
 
 
 class RouteUpdateSerializer(serializers.ModelSerializer):
