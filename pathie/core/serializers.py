@@ -351,12 +351,18 @@ class PlaceInputSerializer(serializers.Serializer):
     lon = serializers.FloatField(min_value=-180, max_value=180)
     osm_id = serializers.IntegerField(required=False, allow_null=True)
     address = serializers.CharField(required=False, allow_blank=True)
+    wikipedia_id = serializers.CharField(
+        max_length=255, 
+        required=False, 
+        allow_blank=True,
+        help_text="Wikipedia identifier for the place (e.g., 'pl:Pałac Kultury i Nauki')"
+    )
 
 
 class RoutePointCreateSerializer(serializers.ModelSerializer):
     """
     Command Model for adding a point to a manual route.
-    Handles nested Place creation/lookup.
+    Handles nested Place creation/lookup with validation for route type and point limits.
     """
 
     place = PlaceInputSerializer(write_only=True)
@@ -365,38 +371,111 @@ class RoutePointCreateSerializer(serializers.ModelSerializer):
         model = RoutePoint
         fields = ["place"]
 
+    def validate(self, attrs):
+        """
+        Validate that the route can accept new points.
+        
+        Checks:
+        - Route must be of type 'manual'
+        - Route must not exceed maximum point limit (50)
+        
+        Args:
+            attrs: Dictionary containing validated field data
+            
+        Returns:
+            Validated data
+            
+        Raises:
+            serializers.ValidationError: If validation fails
+        """
+        # Get route from context (should be set by the view)
+        route = self.context.get('route')
+        
+        if not route:
+            raise serializers.ValidationError(
+                "Route context is required.",
+                code="route_context_missing"
+            )
+        
+        # Validate route type - only manual routes can have points added
+        if route.route_type != Route.TYPE_MANUAL:
+            raise serializers.ValidationError(
+                "Cannot add points to AI generated route.",
+                code="route_type_invalid"
+            )
+        
+        # Validate point limit (max 50 points per route)
+        current_points_count = RoutePoint.objects.filter(
+            route=route, 
+            is_removed=False
+        ).count()
+        
+        if current_points_count >= 50:
+            raise serializers.ValidationError(
+                "Max points limit reached.",
+                code="max_points_exceeded"
+            )
+        
+        return attrs
+
     def create(self, validated_data):
+        """
+        Create a new RoutePoint with Place lookup/creation logic.
+        
+        Attempts to find existing Place by osm_id or wikipedia_id.
+        If not found, creates a new Place record.
+        Automatically calculates the next position in the route.
+        
+        Args:
+            validated_data: Dictionary with validated data including place info
+            
+        Returns:
+            Created RoutePoint instance
+            
+        Raises:
+            serializers.ValidationError: If route context is missing
+        """
         place_data = validated_data.pop("place")
 
-        # Simple get_or_create logic based on osm_id if present
-        osm_id = place_data.get("osm_id")
+        # Lookup logic: Try to find existing place by osm_id or wikipedia_id
         place = None
+        osm_id = place_data.get("osm_id")
+        wikipedia_id = place_data.get("wikipedia_id")
 
+        # First try osm_id (most reliable identifier)
         if osm_id:
             place = Place.objects.filter(osm_id=osm_id).first()
 
+        # If not found by osm_id, try wikipedia_id
+        if not place and wikipedia_id:
+            place = Place.objects.filter(wikipedia_id=wikipedia_id).first()
+
+        # If still not found, create new place
         if not place:
             place = Place.objects.create(**place_data)
 
-        # route_id is provided by the view logic (injected into validated_data or passed via save)
-        route = validated_data.get("route")
+        # Get route from context (set by view)
+        route = self.context.get('route')
         if not route:
-            # Fallback if route is not in validated_data, check context
-            # (In a real view, perform_create would pass route=...)
             raise serializers.ValidationError("Route context required.")
 
-        # Calculate next position
+        # Calculate next position (0-indexed)
         last_position = (
-            RoutePoint.objects.filter(route=route)
+            RoutePoint.objects.filter(route=route, is_removed=False)
             .order_by("-position")
             .values_list("position", flat=True)
             .first()
         )
-        position = (last_position or 0) + 1
+        position = (last_position if last_position is not None else -1) + 1
 
+        # Create route point with manual source
         route_point = RoutePoint.objects.create(
-            route=route, place=place, position=position, source="manual"
+            route=route, 
+            place=place, 
+            position=position, 
+            source=RoutePoint.SOURCE_MANUAL
         )
+        
         return route_point
 
 

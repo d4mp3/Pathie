@@ -21,6 +21,8 @@ from .serializers import (
     RouteUpdateSerializer,
     RouteOptimizeInputSerializer,
     RoutePointDetailSerializer,
+    RoutePointCreateSerializer,
+    RoutePointSerializer,
 )
 from .models import Rating, Route, RoutePoint
 from .selectors import route_list_selector
@@ -927,5 +929,184 @@ class RouteOptimizeAPIView(APIView):
             )
             return Response(
                 {"detail": "Wystąpił błąd podczas optymalizacji trasy."},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+
+class RouteAddPointAPIView(APIView):
+    """
+    API endpoint for adding a new point (place) to an existing manual route.
+
+    Automatically handles Place creation if it doesn't exist (lookup by osm_id or wikipedia_id).
+    Only manual routes can have points added - AI generated routes are read-only.
+
+    **Endpoint:** POST /api/routes/{id}/points/
+
+    **Required Headers:**
+    - Authorization: Token <token_key>
+
+    **Path Parameters:**
+    - id: int - Unique identifier of the route
+
+    **Request Body (JSON):**
+    ```json
+    {
+        "place": {
+            "name": "Palace of Culture",
+            "lat": 52.231,
+            "lon": 21.006,
+            "osm_id": 123456,
+            "address": "Plac Defilad 1",
+            "wikipedia_id": "pl:Pałac Kultury i Nauki"
+        }
+    }
+    ```
+
+    **Required Fields:**
+    - place.name: string - Name of the place
+    - place.lat: float - Latitude (-90 to 90)
+    - place.lon: float - Longitude (-180 to 180)
+
+    **Optional Fields:**
+    - place.osm_id: int - OpenStreetMap ID (used for deduplication)
+    - place.address: string - Full address
+    - place.wikipedia_id: string - Wikipedia identifier
+
+    **Success Response (201 Created):**
+    ```json
+    {
+        "id": 101,
+        "position": 5,
+        "place": {
+            "id": 55,
+            "name": "Palace of Culture",
+            "osm_id": 123456,
+            "wikipedia_id": "pl:Pałac Kultury i Nauki",
+            "address": "Plac Defilad 1",
+            "city": null,
+            "country": null,
+            "lat": 52.231,
+            "lon": 21.006,
+            "data": {}
+        },
+        "description": null
+    }
+    ```
+
+    **Error Response (400 Bad Request):**
+    ```json
+    {
+        "detail": "Cannot add points to AI generated route."
+    }
+    ```
+    or
+    ```json
+    {
+        "detail": "Max points limit reached."
+    }
+    ```
+    or
+    ```json
+    {
+        "place": {
+            "name": ["To pole jest wymagane."],
+            "lat": ["Upewnij się, że ta wartość jest większa lub równa -90."]
+        }
+    }
+    ```
+
+    **Error Response (401 Unauthorized):**
+    ```json
+    {
+        "detail": "Nie podano danych uwierzytelniających."
+    }
+    ```
+
+    **Error Response (404 Not Found):**
+    ```json
+    {
+        "detail": "Nie znaleziono."
+    }
+    ```
+
+    **Security Features:**
+    - Requires authentication (IsAuthenticated permission)
+    - Automatic user isolation - users can only modify their own routes
+    - Returns 404 for non-existent routes or routes belonging to other users
+    - Atomic transaction ensures data consistency
+
+    **Business Rules:**
+    - Only manual routes can have points added (ai_generated routes are read-only)
+    - Maximum 50 points per route
+    - Place deduplication by osm_id or wikipedia_id
+    - Automatic position calculation (appends to end of route)
+
+    **Performance:**
+    - Efficient Place lookup using indexed fields (osm_id, wikipedia_id)
+    - Single database transaction for consistency
+    - Minimal queries with select_related for response serialization
+    """
+
+    permission_classes = [IsAuthenticated]
+
+    @transaction.atomic
+    def post(self, request: Any, pk: int, *args: Any, **kwargs: Any) -> Response:
+        """
+        Handles POST requests for adding a point to a route.
+
+        Validates input data, checks business rules (route type, point limit),
+        creates or finds the Place, and adds it to the route.
+
+        Args:
+            request: HTTP request object with authenticated user and place data
+            pk: Primary key (ID) of the route to add point to
+
+        Returns:
+            Response: JSON response with created RoutePoint data and 201 Created status
+                     400 Bad Request if business rules are violated or validation fails
+                     404 Not Found if route doesn't exist or belongs to another user
+        """
+        # Get route belonging to the authenticated user
+        # This ensures user isolation - returns 404 if route doesn't exist
+        # or belongs to another user (security best practice)
+        route = get_object_or_404(Route, pk=pk, user=request.user)
+
+        # Initialize serializer with route context for validation
+        serializer = RoutePointCreateSerializer(
+            data=request.data,
+            context={'route': route, 'request': request}
+        )
+
+        # Validate input data and business rules
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            # Create the route point (handles Place lookup/creation internally)
+            route_point = serializer.save()
+
+            # Reload with related data for response serialization
+            route_point_with_relations = (
+                RoutePoint.objects
+                .select_related('place', 'description')
+                .get(pk=route_point.pk)
+            )
+
+            # Serialize and return the created point
+            response_serializer = RoutePointSerializer(route_point_with_relations)
+
+            return Response(response_serializer.data, status=status.HTTP_201_CREATED)
+
+        except Exception as e:
+            # Log unexpected errors
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.error(
+                f"Unexpected error during route point creation: "
+                f"route_id={pk}, user_id={request.user.id}, error={str(e)}",
+                exc_info=True
+            )
+            return Response(
+                {"detail": "Wystąpił błąd podczas dodawania punktu do trasy."},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
