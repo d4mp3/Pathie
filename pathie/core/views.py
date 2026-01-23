@@ -18,6 +18,7 @@ from .serializers import (
     RatingSerializer,
     RouteListSerializer,
     RouteDetailSerializer,
+    RouteUpdateSerializer,
     RouteOptimizeInputSerializer,
     RoutePointDetailSerializer,
 )
@@ -504,11 +505,12 @@ class RouteListAPIView(generics.ListAPIView):
 
 class RouteDetailAPIView(APIView):
     """
-    API endpoint for retrieving and deleting a specific route.
+    API endpoint for retrieving, updating, and deleting a specific route.
 
     Provides operations on individual routes with automatic user isolation.
 
     **Endpoint:** GET /api/routes/{id}/
+    **Endpoint:** PATCH /api/routes/{id}/
     **Endpoint:** DELETE /api/routes/{id}/
 
     **Required Headers:**
@@ -545,8 +547,37 @@ class RouteDetailAPIView(APIView):
     }
     ```
 
+    **PATCH Request Body (JSON, all fields optional):**
+    ```json
+    {
+        "name": "My Trip to Paris",
+        "status": "saved"
+    }
+    ```
+
+    **PATCH Success Response (200 OK):**
+    ```json
+    {
+        "id": 101,
+        "name": "My Trip to Paris",
+        "status": "saved",
+        "route_type": "ai_generated",
+        "saved_at": "2026-01-24T10:30:00Z",
+        "created_at": "2026-01-24T10:00:00Z",
+        "updated_at": "2026-01-24T10:30:00Z"
+    }
+    ```
+
     **DELETE Success Response (204 No Content):**
     Empty response body
+
+    **Error Response (400 Bad Request):**
+    ```json
+    {
+        "name": ["Nazwa trasy nie może być pusta."],
+        "status": ["Nieprawidłowy status. Dozwolone wartości: 'temporary', 'saved'."]
+    }
+    ```
 
     **Error Response (401 Unauthorized):**
     ```json
@@ -566,12 +597,18 @@ class RouteDetailAPIView(APIView):
     - Requires authentication (IsAuthenticated permission)
     - Automatic user isolation - users can only access their own routes
     - Returns 404 for non-existent routes or routes belonging to other users
-    - Atomic transaction ensures data consistency during cascade deletion
+    - Atomic transaction ensures data consistency during updates and cascade deletion
 
     **Performance Optimizations (GET):**
     - Uses prefetch_related to avoid N+1 queries
     - Annotates user_rating_value using Subquery for efficiency
     - Points are ordered by position in the database
+
+    **Business Logic (PATCH):**
+    - When status changes from 'temporary' to 'saved', saved_at timestamp is automatically set
+    - Both name and status are optional (partial update)
+    - Name is trimmed and validated for length
+    - Status must be one of: 'temporary', 'saved'
 
     **Cascade Deletion:**
     When a route is deleted, the following related objects are automatically removed:
@@ -634,6 +671,64 @@ class RouteDetailAPIView(APIView):
         # Serialize and return
         serializer = RouteDetailSerializer(route)
         return Response(serializer.data, status=status.HTTP_200_OK)
+
+    @transaction.atomic
+    def patch(self, request: Any, pk: int, *args: Any, **kwargs: Any) -> Response:
+        """
+        Handles PATCH requests for updating route name and/or status.
+
+        Supports partial updates - all fields are optional.
+        When status changes to 'saved', automatically sets saved_at timestamp.
+
+        Args:
+            request: HTTP request object with authenticated user and update data
+            pk: Primary key (ID) of the route to update
+
+        Returns:
+            Response: JSON response with updated route data and 200 OK status
+                     400 Bad Request for validation errors
+                     404 Not Found if route doesn't exist or belongs to another user
+        """
+        # Get route belonging to the authenticated user
+        # This ensures user isolation - returns 404 if route doesn't exist
+        # or belongs to another user (security best practice)
+        route = get_object_or_404(Route, pk=pk, user=request.user)
+
+        # Validate input data
+        serializer = RouteUpdateSerializer(data=request.data, partial=True)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        # Update route using service layer
+        try:
+            updated_route = RouteService.update_route(route, serializer.validated_data)
+            
+            # Prepare response with basic route information
+            response_data = {
+                "id": updated_route.id,
+                "name": updated_route.name,
+                "status": updated_route.status,
+                "route_type": updated_route.route_type,
+                "saved_at": updated_route.saved_at,
+                "created_at": updated_route.created_at,
+                "updated_at": updated_route.updated_at,
+            }
+            
+            return Response(response_data, status=status.HTTP_200_OK)
+            
+        except Exception as e:
+            # Log unexpected errors
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.error(
+                f"Unexpected error during route update: "
+                f"route_id={pk}, user_id={request.user.id}, error={str(e)}",
+                exc_info=True
+            )
+            return Response(
+                {"detail": "Wystąpił błąd podczas aktualizacji trasy."},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
 
     @transaction.atomic
     def delete(self, request: Any, pk: int, *args: Any, **kwargs: Any) -> Response:
