@@ -4,7 +4,7 @@ from rest_framework.test import APIClient
 from rest_framework.authtoken.models import Token
 from rest_framework import status
 
-from .models import Route, RoutePoint, Place, PlaceDescription, Rating
+from .models import Route, RoutePoint, Place, PlaceDescription, Rating, Tag, RouteTag, AIGenerationLog
 from .serializers import (
     PlaceSimpleSerializer,
     PlaceDescriptionContentSerializer,
@@ -2832,3 +2832,539 @@ class RoutePointDeleteAPIViewTests(TestCase):
         self.assertEqual(place.name, "Test Place 1")
         self.assertEqual(place.lat, 52.2297)
         self.assertEqual(place.lon, 21.0122)
+
+
+# -----------------------------------------------------------------------------
+# Route Creation (POST /api/routes/) Tests
+# -----------------------------------------------------------------------------
+
+
+class RouteCreateAPIViewTests(TestCase):
+    """
+    Test suite for POST /api/routes/ endpoint.
+    Tests creation of both manual and AI-generated routes.
+    """
+
+    def setUp(self):
+        """Set up test client, users, and tags."""
+        self.client = APIClient()
+        self.route_create_url = "/api/routes/"
+        
+        # Create test users
+        self.user1 = User.objects.create_user(
+            username="user1",
+            email="user1@example.com",
+            password="testpass123",
+            is_active=True,
+        )
+        self.user2 = User.objects.create_user(
+            username="user2",
+            email="user2@example.com",
+            password="testpass123",
+            is_active=True,
+        )
+        
+        # Create tokens
+        self.token1 = Token.objects.create(user=self.user1)
+        self.token2 = Token.objects.create(user=self.user2)
+        
+        # Create test tags
+        self.tag1 = Tag.objects.create(
+            name="Museums",
+            description="Museums and galleries",
+            is_active=True,
+            priority=10
+        )
+        self.tag2 = Tag.objects.create(
+            name="Architecture",
+            description="Architectural landmarks",
+            is_active=True,
+            priority=9
+        )
+        self.tag3 = Tag.objects.create(
+            name="Parks",
+            description="Parks and nature",
+            is_active=True,
+            priority=8
+        )
+        self.tag_inactive = Tag.objects.create(
+            name="Inactive Tag",
+            description="This tag is inactive",
+            is_active=False,
+            priority=0
+        )
+
+    # -------------------------------------------------------------------------
+    # Manual Route Creation Tests
+    # -------------------------------------------------------------------------
+
+    def test_create_manual_route_with_name(self):
+        """Test creating a manual route with custom name."""
+        self.client.credentials(HTTP_AUTHORIZATION=f"Token {self.token1.key}")
+        
+        data = {
+            "route_type": "manual",
+            "name": "My Trip to Krakow"
+        }
+        
+        response = self.client.post(self.route_create_url, data, format="json")
+        
+        # Verify response
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertIn("id", response.data)
+        self.assertEqual(response.data["name"], "My Trip to Krakow")
+        self.assertEqual(response.data["status"], "temporary")
+        self.assertEqual(response.data["route_type"], "manual")
+        self.assertEqual(response.data["points"], [])  # No points initially
+        
+        # Verify database
+        route = Route.objects.get(id=response.data["id"])
+        self.assertEqual(route.user, self.user1)
+        self.assertEqual(route.name, "My Trip to Krakow")
+        self.assertEqual(route.status, Route.STATUS_TEMPORARY)
+        self.assertEqual(route.route_type, Route.TYPE_MANUAL)
+        
+        # Verify no tags associated
+        self.assertEqual(RouteTag.objects.filter(route=route).count(), 0)
+
+    def test_create_manual_route_without_name(self):
+        """Test creating a manual route without name uses default."""
+        self.client.credentials(HTTP_AUTHORIZATION=f"Token {self.token1.key}")
+        
+        data = {
+            "route_type": "manual"
+        }
+        
+        response = self.client.post(self.route_create_url, data, format="json")
+        
+        # Verify response
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(response.data["name"], "My Custom Trip")
+        self.assertEqual(response.data["route_type"], "manual")
+        self.assertEqual(response.data["points"], [])
+
+    def test_create_manual_route_with_whitespace_name(self):
+        """Test creating a manual route with whitespace-only name uses default."""
+        self.client.credentials(HTTP_AUTHORIZATION=f"Token {self.token1.key}")
+        
+        data = {
+            "route_type": "manual",
+            "name": "   "  # Whitespace only
+        }
+        
+        response = self.client.post(self.route_create_url, data, format="json")
+        
+        # Should succeed and use default name (service trims whitespace)
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(response.data["name"], "My Custom Trip")
+
+    def test_create_manual_route_with_tags_fails(self):
+        """Test that manual routes cannot have tags."""
+        self.client.credentials(HTTP_AUTHORIZATION=f"Token {self.token1.key}")
+        
+        data = {
+            "route_type": "manual",
+            "name": "My Trip",
+            "tags": [self.tag1.id]
+        }
+        
+        response = self.client.post(self.route_create_url, data, format="json")
+        
+        # Should fail validation
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("tags", response.data)
+        self.assertIn("nie są dozwolone", str(response.data["tags"][0]).lower())
+
+    def test_create_manual_route_with_description_fails(self):
+        """Test that manual routes cannot have description."""
+        self.client.credentials(HTTP_AUTHORIZATION=f"Token {self.token1.key}")
+        
+        data = {
+            "route_type": "manual",
+            "name": "My Trip",
+            "description": "Some description"
+        }
+        
+        response = self.client.post(self.route_create_url, data, format="json")
+        
+        # Should fail validation
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("description", response.data)
+
+    def test_create_manual_route_name_too_long(self):
+        """Test that manual route name cannot exceed 500 characters."""
+        self.client.credentials(HTTP_AUTHORIZATION=f"Token {self.token1.key}")
+        
+        data = {
+            "route_type": "manual",
+            "name": "A" * 501  # 501 characters
+        }
+        
+        response = self.client.post(self.route_create_url, data, format="json")
+        
+        # Should fail validation
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("name", response.data)
+
+    # -------------------------------------------------------------------------
+    # AI-Generated Route Creation Tests
+    # -------------------------------------------------------------------------
+
+    def test_create_ai_route_with_one_tag(self):
+        """Test creating an AI-generated route with 1 tag."""
+        self.client.credentials(HTTP_AUTHORIZATION=f"Token {self.token1.key}")
+        
+        data = {
+            "route_type": "ai_generated",
+            "tags": [self.tag1.id]
+        }
+        
+        response = self.client.post(self.route_create_url, data, format="json")
+        
+        # Verify response
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertIn("id", response.data)
+        self.assertEqual(response.data["status"], "temporary")
+        self.assertEqual(response.data["route_type"], "ai_generated")
+        self.assertGreater(len(response.data["points"]), 0)  # Should have AI-generated points
+        
+        # Verify database
+        route = Route.objects.get(id=response.data["id"])
+        self.assertEqual(route.user, self.user1)
+        self.assertEqual(route.route_type, Route.TYPE_AI_GENERATED)
+        
+        # Verify tags
+        route_tags = RouteTag.objects.filter(route=route)
+        self.assertEqual(route_tags.count(), 1)
+        self.assertEqual(route_tags.first().tag, self.tag1)
+        
+        # Verify AI log was created
+        ai_logs = AIGenerationLog.objects.filter(route=route)
+        self.assertEqual(ai_logs.count(), 1)
+        self.assertEqual(ai_logs.first().tags_snapshot, ["Museums"])
+
+    def test_create_ai_route_with_two_tags(self):
+        """Test creating an AI-generated route with 2 tags."""
+        self.client.credentials(HTTP_AUTHORIZATION=f"Token {self.token1.key}")
+        
+        data = {
+            "route_type": "ai_generated",
+            "tags": [self.tag1.id, self.tag2.id]
+        }
+        
+        response = self.client.post(self.route_create_url, data, format="json")
+        
+        # Verify response
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        
+        # Verify tags
+        route = Route.objects.get(id=response.data["id"])
+        route_tags = RouteTag.objects.filter(route=route)
+        self.assertEqual(route_tags.count(), 2)
+        
+        tag_ids = set(rt.tag.id for rt in route_tags)
+        self.assertEqual(tag_ids, {self.tag1.id, self.tag2.id})
+
+    def test_create_ai_route_with_three_tags(self):
+        """Test creating an AI-generated route with 3 tags (maximum)."""
+        self.client.credentials(HTTP_AUTHORIZATION=f"Token {self.token1.key}")
+        
+        data = {
+            "route_type": "ai_generated",
+            "tags": [self.tag1.id, self.tag2.id, self.tag3.id]
+        }
+        
+        response = self.client.post(self.route_create_url, data, format="json")
+        
+        # Verify response
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        
+        # Verify tags
+        route = Route.objects.get(id=response.data["id"])
+        route_tags = RouteTag.objects.filter(route=route)
+        self.assertEqual(route_tags.count(), 3)
+
+    def test_create_ai_route_with_description(self):
+        """Test creating an AI-generated route with optional description."""
+        self.client.credentials(HTTP_AUTHORIZATION=f"Token {self.token1.key}")
+        
+        data = {
+            "route_type": "ai_generated",
+            "tags": [self.tag1.id],
+            "description": "Interested in modern architecture and design"
+        }
+        
+        response = self.client.post(self.route_create_url, data, format="json")
+        
+        # Verify response
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        
+        # Verify AI log contains description
+        route = Route.objects.get(id=response.data["id"])
+        ai_log = AIGenerationLog.objects.get(route=route)
+        self.assertEqual(ai_log.additional_text_snapshot, "Interested in modern architecture and design")
+
+    def test_create_ai_route_without_tags_fails(self):
+        """Test that AI-generated routes require tags."""
+        self.client.credentials(HTTP_AUTHORIZATION=f"Token {self.token1.key}")
+        
+        data = {
+            "route_type": "ai_generated"
+        }
+        
+        response = self.client.post(self.route_create_url, data, format="json")
+        
+        # Should fail validation
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("tags", response.data)
+        self.assertIn("wymagane", str(response.data["tags"][0]).lower())
+
+    def test_create_ai_route_with_empty_tags_fails(self):
+        """Test that AI-generated routes cannot have empty tags list."""
+        self.client.credentials(HTTP_AUTHORIZATION=f"Token {self.token1.key}")
+        
+        data = {
+            "route_type": "ai_generated",
+            "tags": []
+        }
+        
+        response = self.client.post(self.route_create_url, data, format="json")
+        
+        # Should fail validation
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("tags", response.data)
+
+    def test_create_ai_route_with_too_many_tags_fails(self):
+        """Test that AI-generated routes cannot have more than 3 tags."""
+        self.client.credentials(HTTP_AUTHORIZATION=f"Token {self.token1.key}")
+        
+        # Create a 4th tag
+        tag4 = Tag.objects.create(name="History", is_active=True)
+        
+        data = {
+            "route_type": "ai_generated",
+            "tags": [self.tag1.id, self.tag2.id, self.tag3.id, tag4.id]
+        }
+        
+        response = self.client.post(self.route_create_url, data, format="json")
+        
+        # Should fail validation
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("tags", response.data)
+        self.assertIn("3", str(response.data["tags"][0]))
+
+    def test_create_ai_route_with_invalid_tag_id_fails(self):
+        """Test that invalid tag IDs are rejected."""
+        self.client.credentials(HTTP_AUTHORIZATION=f"Token {self.token1.key}")
+        
+        data = {
+            "route_type": "ai_generated",
+            "tags": [99999]  # Non-existent tag ID
+        }
+        
+        response = self.client.post(self.route_create_url, data, format="json")
+        
+        # Should fail validation
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("tags", response.data)
+
+    def test_create_ai_route_with_inactive_tag_fails(self):
+        """Test that inactive tags are rejected."""
+        self.client.credentials(HTTP_AUTHORIZATION=f"Token {self.token1.key}")
+        
+        data = {
+            "route_type": "ai_generated",
+            "tags": [self.tag_inactive.id]
+        }
+        
+        response = self.client.post(self.route_create_url, data, format="json")
+        
+        # Should fail validation
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("tags", response.data)
+
+    def test_create_ai_route_description_too_long_fails(self):
+        """Test that description cannot exceed 1000 characters."""
+        self.client.credentials(HTTP_AUTHORIZATION=f"Token {self.token1.key}")
+        
+        data = {
+            "route_type": "ai_generated",
+            "tags": [self.tag1.id],
+            "description": "A" * 1001  # 1001 characters
+        }
+        
+        response = self.client.post(self.route_create_url, data, format="json")
+        
+        # Should fail validation
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("description", response.data)
+
+    def test_create_ai_route_generates_points(self):
+        """Test that AI-generated routes have points created."""
+        self.client.credentials(HTTP_AUTHORIZATION=f"Token {self.token1.key}")
+        
+        data = {
+            "route_type": "ai_generated",
+            "tags": [self.tag1.id, self.tag2.id]
+        }
+        
+        response = self.client.post(self.route_create_url, data, format="json")
+        
+        # Verify response has points
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertGreater(len(response.data["points"]), 0)
+        
+        # Verify points structure
+        first_point = response.data["points"][0]
+        self.assertIn("id", first_point)
+        self.assertIn("order", first_point)
+        self.assertIn("place", first_point)
+        self.assertIn("description", first_point)
+        
+        # Verify place structure
+        self.assertIn("name", first_point["place"])
+        self.assertIn("lat", first_point["place"])
+        self.assertIn("lon", first_point["place"])
+        
+        # Verify database
+        route = Route.objects.get(id=response.data["id"])
+        route_points = RoutePoint.objects.filter(route=route, is_removed=False)
+        self.assertGreater(route_points.count(), 0)
+        
+        # Verify all points have AI source
+        for point in route_points:
+            self.assertEqual(point.source, RoutePoint.SOURCE_AI_GENERATED)
+
+    def test_create_ai_route_creates_place_descriptions(self):
+        """Test that AI-generated routes create place descriptions."""
+        self.client.credentials(HTTP_AUTHORIZATION=f"Token {self.token1.key}")
+        
+        data = {
+            "route_type": "ai_generated",
+            "tags": [self.tag1.id]
+        }
+        
+        response = self.client.post(self.route_create_url, data, format="json")
+        
+        # Verify response
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        
+        # Verify descriptions exist
+        route = Route.objects.get(id=response.data["id"])
+        route_points = RoutePoint.objects.filter(route=route, is_removed=False)
+        
+        for point in route_points:
+            descriptions = PlaceDescription.objects.filter(route_point=point)
+            self.assertGreater(descriptions.count(), 0)
+
+    # -------------------------------------------------------------------------
+    # General Validation Tests
+    # -------------------------------------------------------------------------
+
+    def test_create_route_without_authentication_fails(self):
+        """Test that unauthenticated requests are rejected."""
+        data = {
+            "route_type": "manual",
+            "name": "My Trip"
+        }
+        
+        response = self.client.post(self.route_create_url, data, format="json")
+        
+        # Should fail authentication
+        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+
+    def test_create_route_without_route_type_fails(self):
+        """Test that route_type is required."""
+        self.client.credentials(HTTP_AUTHORIZATION=f"Token {self.token1.key}")
+        
+        data = {
+            "name": "My Trip"
+        }
+        
+        response = self.client.post(self.route_create_url, data, format="json")
+        
+        # Should fail validation
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("route_type", response.data)
+
+    def test_create_route_with_invalid_route_type_fails(self):
+        """Test that invalid route_type is rejected."""
+        self.client.credentials(HTTP_AUTHORIZATION=f"Token {self.token1.key}")
+        
+        data = {
+            "route_type": "invalid_type"
+        }
+        
+        response = self.client.post(self.route_create_url, data, format="json")
+        
+        # Should fail validation
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("route_type", response.data)
+
+    def test_create_route_user_isolation(self):
+        """Test that routes are created for the authenticated user."""
+        self.client.credentials(HTTP_AUTHORIZATION=f"Token {self.token1.key}")
+        
+        data = {
+            "route_type": "manual",
+            "name": "User 1 Trip"
+        }
+        
+        response = self.client.post(self.route_create_url, data, format="json")
+        
+        # Verify route belongs to user1
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        route = Route.objects.get(id=response.data["id"])
+        self.assertEqual(route.user, self.user1)
+        
+        # Verify user2 cannot see it in their list
+        self.client.credentials(HTTP_AUTHORIZATION=f"Token {self.token2.key}")
+        list_response = self.client.get(self.route_create_url)
+        route_ids = [r["id"] for r in list_response.data["results"]]
+        self.assertNotIn(route.id, route_ids)
+
+    def test_create_multiple_routes_same_user(self):
+        """Test that a user can create multiple routes."""
+        self.client.credentials(HTTP_AUTHORIZATION=f"Token {self.token1.key}")
+        
+        # Create first route
+        data1 = {
+            "route_type": "manual",
+            "name": "Trip 1"
+        }
+        response1 = self.client.post(self.route_create_url, data1, format="json")
+        self.assertEqual(response1.status_code, status.HTTP_201_CREATED)
+        
+        # Create second route
+        data2 = {
+            "route_type": "ai_generated",
+            "tags": [self.tag1.id]
+        }
+        response2 = self.client.post(self.route_create_url, data2, format="json")
+        self.assertEqual(response2.status_code, status.HTTP_201_CREATED)
+        
+        # Verify both exist
+        self.assertNotEqual(response1.data["id"], response2.data["id"])
+        self.assertEqual(Route.objects.filter(user=self.user1).count(), 2)
+
+    def test_create_route_transaction_rollback_on_error(self):
+        """Test that database transaction is rolled back on error."""
+        self.client.credentials(HTTP_AUTHORIZATION=f"Token {self.token1.key}")
+        
+        initial_route_count = Route.objects.count()
+        initial_tag_count = RouteTag.objects.count()
+        
+        # Try to create route with invalid data that will fail after partial creation
+        data = {
+            "route_type": "ai_generated",
+            "tags": [99999]  # Invalid tag ID
+        }
+        
+        response = self.client.post(self.route_create_url, data, format="json")
+        
+        # Should fail
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        
+        # Verify no partial data was created
+        self.assertEqual(Route.objects.count(), initial_route_count)
+        self.assertEqual(RouteTag.objects.count(), initial_tag_count)

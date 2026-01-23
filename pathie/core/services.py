@@ -290,6 +290,55 @@ class RouteService:
         )
         
         # Mock data - will be replaced with real AI service
+        # Note: PlaceDescription requires content between 2500-5000 characters
+        mock_description = (
+            "This is a fascinating place with rich history and cultural significance. "
+            "The location offers visitors a unique opportunity to explore and learn about "
+            "the local heritage, architecture, and traditions that have shaped this area "
+            "over centuries. Visitors can expect to spend several hours here, taking in "
+            "the sights, sounds, and atmosphere of this remarkable destination. "
+            "The site is well-maintained and accessible, with knowledgeable guides available "
+            "to provide detailed information about the historical context and significance. "
+            "Throughout the year, various events and exhibitions are held here, showcasing "
+            "different aspects of the cultural heritage. The architecture is particularly "
+            "noteworthy, featuring elements from various periods and styles that reflect "
+            "the complex history of the region. Many visitors find themselves captivated "
+            "by the intricate details and craftsmanship visible in every corner. "
+            "The surrounding area also offers plenty of opportunities for exploration, "
+            "with nearby cafes, restaurants, and shops that cater to tourists and locals alike. "
+            "Photography enthusiasts will find endless subjects to capture, from grand vistas "
+            "to intimate details. The lighting changes throughout the day, offering different "
+            "perspectives and moods. Early morning visits provide a serene atmosphere, while "
+            "late afternoon brings golden light that enhances the beauty of the structures. "
+            "Seasonal changes also bring their own charm, with spring blossoms, summer greenery, "
+            "autumn colors, and winter snow each creating unique visual experiences. "
+            "Educational programs are available for school groups and families, making this "
+            "an excellent destination for learning outside the classroom. Interactive exhibits "
+            "and hands-on activities help bring history to life for younger visitors. "
+            "The staff is multilingual and always ready to assist with questions or provide "
+            "recommendations for making the most of your visit. Accessibility features ensure "
+            "that everyone can enjoy the experience, regardless of physical limitations. "
+            "Audio guides are available in multiple languages, providing detailed commentary "
+            "as you explore at your own pace. The gift shop offers a carefully curated selection "
+            "of books, souvenirs, and locally made crafts that make perfect mementos of your visit. "
+            "Many items are exclusive to this location and cannot be found elsewhere. "
+            "The on-site cafe serves refreshments and light meals, using locally sourced ingredients "
+            "whenever possible. Outdoor seating areas provide pleasant spots to rest and reflect "
+            "on what you've seen. The gardens surrounding the main structures are meticulously "
+            "maintained and feature both native and exotic plant species. Benches and shaded areas "
+            "invite visitors to pause and soak in the peaceful ambiance. Special events throughout "
+            "the year, including concerts, lectures, and festivals, add extra dimensions to the "
+            "visitor experience. These events often celebrate local traditions and bring the "
+            "community together. Advance booking is recommended during peak tourist seasons to "
+            "avoid long wait times. Group discounts and family packages are available, making "
+            "visits more affordable for larger parties. Annual memberships offer unlimited access "
+            "and other benefits for frequent visitors. The location is easily accessible by public "
+            "transportation, with several bus and metro lines stopping nearby. Ample parking is "
+            "available for those arriving by car. Bicycle racks encourage eco-friendly transportation "
+            "options. The facility is committed to sustainability and environmental responsibility, "
+            "implementing various green initiatives and conservation efforts."
+        )
+        
         return [
             {
                 'name': 'Palace of Culture and Science',
@@ -298,9 +347,9 @@ class RouteService:
                 'address': 'plac Defilad 1',
                 'city': 'Warsaw',
                 'country': 'Poland',
-                'osm_id': 'N123456',
+                'osm_id': 123456789,
                 'wikipedia_id': None,
-                'description': 'A notable landmark in Warsaw, offering panoramic views of the city.'
+                'description': mock_description
             },
             {
                 'name': 'Royal Castle',
@@ -309,9 +358,9 @@ class RouteService:
                 'address': 'plac Zamkowy 4',
                 'city': 'Warsaw',
                 'country': 'Poland',
-                'osm_id': 'N789012',
+                'osm_id': 987654321,
                 'wikipedia_id': None,
-                'description': 'Historic royal residence with beautiful architecture and rich history.'
+                'description': mock_description
             },
             {
                 'name': 'Łazienki Park',
@@ -322,7 +371,7 @@ class RouteService:
                 'country': 'Poland',
                 'osm_id': None,
                 'wikipedia_id': 'Q654321',
-                'description': 'Beautiful park with palace, peacocks, and Chopin monument.'
+                'description': mock_description
             }
         ]
 
