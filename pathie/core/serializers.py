@@ -504,15 +504,65 @@ class RouteCreateSerializer(serializers.ModelSerializer):
 class RouteUpdateSerializer(serializers.ModelSerializer):
     """
     Command Model for updating Route status/name.
+    Used for PATCH /api/routes/{id}/ endpoint.
+    
+    Both fields are optional to support partial updates.
+    When status changes to 'saved', the saved_at timestamp is automatically set.
     """
 
     class Meta:
         model = Route
         fields = ["name", "status"]
+        extra_kwargs = {
+            "name": {"required": False},
+            "status": {"required": False},
+        }
 
-    def validate_status(self, value):
-        if value not in ["temporary", "saved"]:
-            raise serializers.ValidationError("Invalid status.")
+    def validate_name(self, value: str) -> str:
+        """
+        Validate route name.
+        
+        Args:
+            value: Route name to validate
+            
+        Returns:
+            Validated name
+            
+        Raises:
+            serializers.ValidationError: If name is empty or too long
+        """
+        if not value or not value.strip():
+            raise serializers.ValidationError(
+                "Nazwa trasy nie może być pusta.",
+                code="name_empty"
+            )
+        
+        if len(value) > 500:
+            raise serializers.ValidationError(
+                "Nazwa trasy nie może przekraczać 500 znaków.",
+                code="name_too_long"
+            )
+        
+        return value.strip()
+
+    def validate_status(self, value: str) -> str:
+        """
+        Validate route status.
+        
+        Args:
+            value: Status to validate
+            
+        Returns:
+            Validated status
+            
+        Raises:
+            serializers.ValidationError: If status is invalid
+        """
+        if value not in [Route.STATUS_TEMPORARY, Route.STATUS_SAVED]:
+            raise serializers.ValidationError(
+                f"Nieprawidłowy status. Dozwolone wartości: '{Route.STATUS_TEMPORARY}', '{Route.STATUS_SAVED}'.",
+                code="status_invalid"
+            )
         return value
 
 

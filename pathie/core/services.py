@@ -9,6 +9,7 @@ import logging
 from typing import List, Dict, Any
 from django.db import transaction
 from django.core.exceptions import ValidationError
+from django.utils import timezone
 
 from .models import Route, RoutePoint, Place
 
@@ -27,6 +28,78 @@ class RouteService:
     """
     Service class for Route-related business logic.
     """
+
+    @staticmethod
+    @transaction.atomic
+    def update_route(route: Route, validated_data: Dict[str, Any]) -> Route:
+        """
+        Update route name and/or status.
+        
+        When status changes to 'saved', automatically sets saved_at timestamp.
+        This is the primary method for persisting temporary routes.
+        
+        Args:
+            route: Route instance to update
+            validated_data: Dictionary with validated fields (name, status)
+            
+        Returns:
+            Updated Route instance
+            
+        Raises:
+            ValidationError: If validation fails
+            
+        Example:
+            >>> route = Route.objects.get(id=123)
+            >>> updated_route = RouteService.update_route(
+            ...     route,
+            ...     {'name': 'My Trip', 'status': 'saved'}
+            ... )
+        """
+        logger.info(
+            f"Updating route: route_id={route.id}, "
+            f"current_status={route.status}, "
+            f"update_data={validated_data}"
+        )
+        
+        # Track if status is changing to 'saved'
+        status_changing_to_saved = False
+        new_status = validated_data.get('status')
+        
+        if new_status and new_status != route.status:
+            logger.info(
+                f"Status change detected: route_id={route.id}, "
+                f"old_status={route.status}, new_status={new_status}"
+            )
+            
+            if new_status == Route.STATUS_SAVED and route.status != Route.STATUS_SAVED:
+                status_changing_to_saved = True
+        
+        # Update fields from validated_data
+        for field, value in validated_data.items():
+            setattr(route, field, value)
+        
+        # Set saved_at timestamp if status is changing to 'saved'
+        if status_changing_to_saved:
+            route.saved_at = timezone.now()
+            logger.info(
+                f"Setting saved_at timestamp: route_id={route.id}, "
+                f"saved_at={route.saved_at}"
+            )
+        
+        # Save the route
+        try:
+            route.full_clean()  # Validate model constraints
+            route.save()
+            logger.info(f"Successfully updated route: route_id={route.id}")
+        except ValidationError as e:
+            logger.error(
+                f"Validation error during route update: route_id={route.id}, "
+                f"error={str(e)}",
+                exc_info=True
+            )
+            raise
+        
+        return route
 
     @staticmethod
     def _calculate_distance(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
