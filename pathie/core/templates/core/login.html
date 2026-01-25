@@ -1,0 +1,161 @@
+{% extends 'core/base.html' %}
+
+{% block title %}Zaloguj się - Pathie{% endblock %}
+
+{% block content %}
+<div class="min-h-screen flex items-center justify-center bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
+    <div class="max-w-md w-full space-y-8">
+        <div>
+            <h2 class="mt-6 text-center text-3xl font-extrabold text-gray-900">
+                Zaloguj się do swojego konta
+            </h2>
+            <p class="mt-2 text-center text-sm text-gray-600">
+                Lub
+                <a href="/register" class="font-medium text-indigo-600 hover:text-indigo-500">
+                    stwórz nowe konto
+                </a>
+            </p>
+        </div>
+        
+        <div x-data="loginForm()" class="mt-8 space-y-6">
+            <!-- Error Alert -->
+            <div x-show="error" 
+                 x-cloak
+                 class="rounded-md bg-red-50 p-4" 
+                 role="alert">
+                <div class="flex">
+                    <div class="flex-shrink-0">
+                        <svg class="h-5 w-5 text-red-400" viewBox="0 0 20 20" fill="currentColor">
+                            <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd" />
+                        </svg>
+                    </div>
+                    <div class="ml-3">
+                        <p class="text-sm font-medium text-red-800" x-text="error"></p>
+                    </div>
+                </div>
+            </div>
+            
+            <form @submit.prevent="submitLogin" class="mt-8 space-y-6">
+                <input type="hidden" name="remember" value="true">
+                <div class="rounded-md shadow-sm -space-y-px">
+                    <div>
+                        <label for="email-address" class="sr-only">Adres email</label>
+                        <input 
+                            id="email-address" 
+                            name="email" 
+                            type="email" 
+                            x-model="email"
+                            autocomplete="email" 
+                            required 
+                            class="appearance-none rounded-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-t-md focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 focus:z-10 sm:text-sm" 
+                            placeholder="Adres email"
+                            :disabled="isLoading">
+                    </div>
+                    <div>
+                        <label for="password" class="sr-only">Hasło</label>
+                        <input 
+                            id="password" 
+                            name="password" 
+                            type="password" 
+                            x-model="password"
+                            autocomplete="current-password" 
+                            required 
+                            class="appearance-none rounded-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-b-md focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 focus:z-10 sm:text-sm" 
+                            placeholder="Hasło"
+                            :disabled="isLoading">
+                    </div>
+                </div>
+
+                <div>
+                    <button 
+                        type="submit" 
+                        :disabled="isLoading"
+                        :class="isLoading ? 'bg-indigo-400 cursor-not-allowed' : 'bg-indigo-600 hover:bg-indigo-700'"
+                        class="group relative w-full flex justify-center py-2 px-4 border border-transparent text-sm font-medium rounded-md text-white focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500">
+                        <span x-show="!isLoading">Zaloguj się</span>
+                        <span x-show="isLoading" class="flex items-center">
+                            <svg class="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                            </svg>
+                            Logowanie...
+                        </span>
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+function loginForm() {
+    return {
+        email: '',
+        password: '',
+        isLoading: false,
+        error: null,
+        
+        async submitLogin() {
+            this.isLoading = true;
+            this.error = null;
+            
+            try {
+                const response = await fetch('/api/auth/login/', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': this.getCsrfToken(),
+                    },
+                    credentials: 'include',
+                    body: JSON.stringify({
+                        email: this.email,
+                        password: this.password,
+                    }),
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok) {
+                    // Store token if needed (for future API calls)
+                    if (data.key) {
+                        localStorage.setItem('authToken', data.key);
+                    }
+                    // Redirect to home page
+                    window.location.href = '/';
+                } else {
+                    // Handle error
+                    if (data.non_field_errors) {
+                        this.error = data.non_field_errors[0];
+                    } else if (data.detail) {
+                        this.error = data.detail;
+                    } else {
+                        this.error = 'Nieprawidłowy adres email lub hasło.';
+                    }
+                }
+            } catch (err) {
+                console.error('Login error:', err);
+                this.error = 'Wystąpił błąd połączenia. Spróbuj ponownie.';
+            } finally {
+                this.isLoading = false;
+            }
+        },
+        
+        getCsrfToken() {
+            const name = 'csrftoken';
+            let cookieValue = null;
+            if (document.cookie && document.cookie !== '') {
+                const cookies = document.cookie.split(';');
+                for (let i = 0; i < cookies.length; i++) {
+                    const cookie = cookies[i].trim();
+                    if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                        cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                        break;
+                    }
+                }
+            }
+            return cookieValue;
+        }
+    };
+}
+</script>
+{% endblock %}

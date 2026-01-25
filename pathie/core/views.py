@@ -9,7 +9,8 @@ from rest_framework.pagination import PageNumberPagination
 from django.contrib.auth import get_user_model, logout
 from django.db import transaction
 from django.db.models import Prefetch, Subquery, OuterRef, IntegerField
-from django.shortcuts import get_object_or_404
+from django.shortcuts import get_object_or_404, render, redirect
+from django.views import View
 from typing import Any
 
 from .serializers import (
@@ -34,6 +35,98 @@ from .permissions import IsRouteOwner
 
 User = get_user_model()
 logger = logging.getLogger(__name__)
+
+
+# -----------------------------------------------------------------------------
+# Frontend Views
+# -----------------------------------------------------------------------------
+
+
+class LandingPageView(View):
+    """
+    Landing page view that serves both guests and authenticated users.
+    
+    For guests: Marketing page with value proposition
+    For authenticated users: Dashboard for route generation and management
+    
+    **URL:** /
+    **Name:** landing_page
+    **Access:** Public (different states for guest/user)
+    """
+    
+    def get(self, request: Any, *args: Any, **kwargs: Any):
+        """
+        Render the landing page with initial context data.
+        
+        Args:
+            request: HTTP request object
+            
+        Returns:
+            Rendered landing page template with context
+        """
+        import json
+        
+        # Get all active tags for route generation
+        available_tags = Tag.objects.filter(is_active=True).order_by('-priority', 'name')
+        
+        context = {
+            'user_is_authenticated': request.user.is_authenticated,
+            'available_tags_json': json.dumps(
+                list(available_tags.values('id', 'name', 'description'))
+            ),
+        }
+        
+        return render(request, 'core/landing.html', context)
+
+
+class LoginView(View):
+    """
+    Login page view.
+    
+    **URL:** /login
+    **Name:** login
+    **Access:** Public
+    """
+    
+    def get(self, request: Any, *args: Any, **kwargs: Any):
+        """Render the login page."""
+        # Redirect if already authenticated
+        if request.user.is_authenticated:
+            return redirect('/')
+        return render(request, 'core/login.html')
+
+
+class RegisterView(View):
+    """
+    Registration page view.
+    
+    **URL:** /register
+    **Name:** register
+    **Access:** Public
+    """
+    
+    def get(self, request: Any, *args: Any, **kwargs: Any):
+        """Render the registration page."""
+        # Redirect if already authenticated
+        if request.user.is_authenticated:
+            return redirect('/')
+        return render(request, 'core/register.html')
+
+
+class LogoutView(View):
+    """
+    Logout view.
+    
+    **URL:** /logout
+    **Name:** logout
+    **Access:** Public
+    """
+    
+    def post(self, request: Any, *args: Any, **kwargs: Any):
+        """Handle logout POST request."""
+        # Clear session
+        logout(request)
+        return redirect('/')
 
 
 # -----------------------------------------------------------------------------
@@ -179,6 +272,8 @@ class RegistrationAPIView(APIView):
                      - 201 Created if registration successful
                      - 400 Bad Request for validation errors
         """
+        from django.contrib.auth import login as django_login
+        
         serializer = self.serializer_class(data=request.data)
 
         # Validate input data
@@ -190,6 +285,9 @@ class RegistrationAPIView(APIView):
 
         # Get the authentication token (created in serializer)
         token = Token.objects.get(user=user)
+        
+        # Create Django session for browser-based access
+        django_login(request, user)
 
         # Prepare response data
         user_serializer = UserSerializer(user)
@@ -258,6 +356,8 @@ class LoginAPIView(APIView):
         Returns:
             Response: JSON response with authentication token or error messages
         """
+        from django.contrib.auth import login as django_login
+        
         serializer = self.serializer_class(data=request.data)
 
         # Validate credentials
@@ -269,6 +369,9 @@ class LoginAPIView(APIView):
 
         # Get or create authentication token for the user
         token, created = Token.objects.get_or_create(user=user)
+        
+        # Create Django session for browser-based access
+        django_login(request, user)
 
         # Return token in the expected format
         return Response({"key": token.key}, status=status.HTTP_200_OK)
