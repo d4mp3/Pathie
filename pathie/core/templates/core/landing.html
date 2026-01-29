@@ -3,7 +3,7 @@
 
 {% block content %}
 <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-    
+
     <!-- Hero Section (visible primarily for guests) -->
     {% if not user.is_authenticated %}
     <section class="text-center mb-12" aria-labelledby="hero-heading">
@@ -11,48 +11,37 @@
             Odkryj swoje miasto z AI
         </h1>
         <p class="text-xl text-gray-600 max-w-2xl mx-auto mb-8">
-            Generuj spersonalizowane trasy turystyczne dostosowane do Twoich zainteresowań. 
+            Generuj spersonalizowane trasy turystyczne dostosowane do Twoich zainteresowań.
             Odkrywaj miejsca, których wcześniej nie znałeś.
         </p>
     </section>
     {% endif %}
-    
+
     <!-- Route Wizard Module -->
-    <div x-data="routeWizard({{ available_tags_json|safe }}, {{ user_is_authenticated|yesno:'true,false' }})" 
-         x-cloak
-         class="bg-white rounded-lg shadow-md p-6 mb-8">
-        
+    <div x-data='routeWizard({{ available_tags_json|safe }}, {{ user_is_authenticated|yesno:"true,false" }})' x-cloak
+        class="bg-white rounded-lg shadow-md p-6 mb-8">
+
         <!-- Mode Switcher -->
         <div class="flex space-x-2 mb-6 border-b border-gray-200" role="tablist" aria-label="Tryb tworzenia trasy">
-            <button 
-                @click="mode = 'ai'"
+            <button @click="mode = 'ai'"
                 :class="mode === 'ai' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'"
-                class="px-4 py-2 border-b-2 font-medium text-sm"
-                role="tab"
-                :aria-selected="mode === 'ai'"
+                class="px-4 py-2 border-b-2 font-medium text-sm" role="tab" :aria-selected="mode === 'ai'"
                 aria-controls="ai-panel">
                 Generuj AI
             </button>
-            <button 
-                @click="mode = 'manual'"
+            <button @click="mode = 'manual'"
                 :class="mode === 'manual' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'"
-                class="px-4 py-2 border-b-2 font-medium text-sm"
-                role="tab"
-                :aria-selected="mode === 'manual'"
+                class="px-4 py-2 border-b-2 font-medium text-sm" role="tab" :aria-selected="mode === 'manual'"
                 aria-controls="manual-panel">
                 Ręcznie
             </button>
         </div>
-        
+
         <!-- AI Generator Form -->
-        <div x-show="mode === 'ai'" 
-             id="ai-panel"
-             role="tabpanel"
-             aria-labelledby="ai-tab"
-             x-transition:enter="transition ease-out duration-200"
-             x-transition:enter-start="opacity-0"
-             x-transition:enter-end="opacity-100">
-            
+        <div x-show="mode === 'ai'" id="ai-panel" role="tabpanel" aria-labelledby="ai-tab"
+            x-transition:enter="transition ease-out duration-200" x-transition:enter-start="opacity-0"
+            x-transition:enter-end="opacity-100">
+
             <form @submit.prevent="generateRoute" class="space-y-6">
                 <!-- Tag Selector -->
                 <div>
@@ -62,14 +51,10 @@
                     </label>
                     <div class="flex flex-wrap gap-2" role="group" aria-label="Wybór tagów">
                         <template x-for="tag in tags" :key="tag.id">
-                            <button
-                                type="button"
-                                @click="toggleTag(tag.id)"
-                                :class="selectedTags.includes(tag.id) 
+                            <button type="button" @click="toggleTag(tag.id)" :class="selectedTags.includes(tag.id) 
                                     ? 'bg-indigo-600 text-white hover:bg-indigo-700' 
                                     : 'bg-gray-100 text-gray-700 hover:bg-gray-200'"
-                                :aria-pressed="selectedTags.includes(tag.id)"
-                                :title="tag.description"
+                                :aria-pressed="selectedTags.includes(tag.id)" :title="tag.description"
                                 class="px-4 py-2 rounded-full text-sm font-medium transition-colors">
                                 <span x-text="tag.name"></span>
                             </button>
@@ -78,22 +63,16 @@
                     <p class="mt-2 text-sm text-gray-500" id="tags-helper">
                         Wybrano: <span x-text="selectedTags.length"></span> / 3
                     </p>
-                    <p x-show="error && error.tags" 
-                       class="mt-2 text-sm text-red-600" 
-                       role="alert"
-                       x-text="error.tags"></p>
+                    <p x-show="error && error.tags" class="mt-2 text-sm text-red-600" role="alert" x-text="error.tags">
+                    </p>
                 </div>
-                
+
                 <!-- Description Input -->
                 <div>
                     <label for="description" class="block text-sm font-medium text-gray-700 mb-2">
                         Opis dodatkowy (opcjonalny)
                     </label>
-                    <textarea
-                        id="description"
-                        x-model="description"
-                        rows="3"
-                        maxlength="10000"
+                    <textarea id="description" x-model="description" rows="3" maxlength="10000"
                         class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
                         placeholder="Np. Interesuje mnie architektura modernistyczna..."
                         aria-describedby="description-helper"></textarea>
@@ -101,35 +80,36 @@
                         Znaków: <span x-text="description.length"></span> / 10000
                     </p>
                 </div>
-                
+
                 <!-- Generate Button -->
                 <div>
-                    <button
-                        type="submit"
-                        :disabled="!isFormValid || isGenerating"
-                        :class="isFormValid && !isGenerating 
+                    <button type="submit" :disabled="!isFormValid || isGenerating" :class="isFormValid && !isGenerating 
                             ? 'bg-indigo-600 hover:bg-indigo-700' 
                             : 'bg-gray-300 cursor-not-allowed'"
                         class="w-full flex justify-center py-3 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500">
                         <span x-show="!isGenerating">Generuj trasę</span>
                         <span x-show="isGenerating" class="flex items-center">
-                            <svg class="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-                                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                            <svg class="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg"
+                                fill="none" viewBox="0 0 24 24">
+                                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor"
+                                    stroke-width="4"></circle>
+                                <path class="opacity-75" fill="currentColor"
+                                    d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z">
+                                </path>
                             </svg>
                             Generowanie...
                         </span>
                     </button>
                 </div>
-                
+
                 <!-- Error Message -->
-                <div x-show="error && error.general" 
-                     class="rounded-md bg-red-50 p-4" 
-                     role="alert">
+                <div x-show="error && error.general" class="rounded-md bg-red-50 p-4" role="alert">
                     <div class="flex">
                         <div class="flex-shrink-0">
                             <svg class="h-5 w-5 text-red-400" viewBox="0 0 20 20" fill="currentColor">
-                                <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd" />
+                                <path fill-rule="evenodd"
+                                    d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z"
+                                    clip-rule="evenodd" />
                             </svg>
                         </div>
                         <div class="ml-3">
@@ -139,46 +119,37 @@
                 </div>
             </form>
         </div>
-        
+
         <!-- Manual Planner Form (Placeholder) -->
-        <div x-show="mode === 'manual'" 
-             id="manual-panel"
-             role="tabpanel"
-             aria-labelledby="manual-tab"
-             x-transition:enter="transition ease-out duration-200"
-             x-transition:enter-start="opacity-0"
-             x-transition:enter-end="opacity-100">
+        <div x-show="mode === 'manual'" id="manual-panel" role="tabpanel" aria-labelledby="manual-tab"
+            x-transition:enter="transition ease-out duration-200" x-transition:enter-start="opacity-0"
+            x-transition:enter-end="opacity-100">
             <div class="text-center py-12">
                 <p class="text-gray-500">Funkcja ręcznego planowania tras będzie dostępna wkrótce.</p>
             </div>
         </div>
-        
+
         <!-- Route Result Module -->
-        <div x-show="generatedRoute" 
-             x-cloak
-             class="mt-8 border-t border-gray-200 pt-8">
+        <div x-show="generatedRoute" x-cloak class="mt-8 border-t border-gray-200 pt-8">
             <h2 class="text-2xl font-bold text-gray-900 mb-6">Twoja trasa</h2>
-            
+
             <!-- Mobile View Toggle -->
             <div class="lg:hidden mb-4 flex space-x-2">
-                <button 
-                    @click="activeView = 'list'"
+                <button @click="activeView = 'list'"
                     :class="activeView === 'list' ? 'bg-indigo-600 text-white' : 'bg-gray-200 text-gray-700'"
                     class="flex-1 py-2 px-4 rounded-md font-medium">
                     Lista
                 </button>
-                <button 
-                    @click="activeView = 'map'"
+                <button @click="activeView = 'map'"
                     :class="activeView === 'map' ? 'bg-indigo-600 text-white' : 'bg-gray-200 text-gray-700'"
                     class="flex-1 py-2 px-4 rounded-md font-medium">
                     Mapa
                 </button>
             </div>
-            
+
             <div class="lg:flex lg:space-x-6">
                 <!-- Route Points List -->
-                <div x-show="activeView === 'list' || window.innerWidth >= 1024" 
-                     class="lg:w-1/2 space-y-4">
+                <div x-show="activeView === 'list' || window.innerWidth >= 1024" class="lg:w-1/2 space-y-4">
                     <template x-if="generatedRoute && generatedRoute.points">
                         <ul class="space-y-3" role="list">
                             <template x-for="(point, index) in generatedRoute.points" :key="point.id">
@@ -186,31 +157,31 @@
                                     <div class="flex items-start justify-between">
                                         <div class="flex-1">
                                             <div class="flex items-center space-x-2">
-                                                <span class="flex-shrink-0 w-8 h-8 bg-indigo-600 text-white rounded-full flex items-center justify-center text-sm font-bold"
-                                                      x-text="index + 1"></span>
+                                                <span
+                                                    class="flex-shrink-0 w-8 h-8 bg-indigo-600 text-white rounded-full flex items-center justify-center text-sm font-bold"
+                                                    x-text="index + 1"></span>
                                                 <h3 class="font-semibold text-gray-900" x-text="point.place.name"></h3>
                                             </div>
-                                            <p class="mt-2 text-sm text-gray-600" x-show="point.place.address" x-text="point.place.address"></p>
+                                            <p class="mt-2 text-sm text-gray-600" x-show="point.place.address"
+                                                x-text="point.place.address"></p>
                                             <div x-show="point.description" class="mt-2">
-                                                <button 
+                                                <button
                                                     @click="expandedPointId = expandedPointId === point.id ? null : point.id"
                                                     class="text-sm text-indigo-600 hover:text-indigo-800 font-medium"
                                                     :aria-expanded="expandedPointId === point.id">
                                                     <span x-show="expandedPointId !== point.id">Pokaż opis</span>
                                                     <span x-show="expandedPointId === point.id">Ukryj opis</span>
                                                 </button>
-                                                <div x-show="expandedPointId === point.id" 
-                                                     x-collapse
-                                                     class="mt-2 text-sm text-gray-700"
-                                                     x-html="point.description.content"></div>
+                                                <div x-show="expandedPointId === point.id" x-collapse
+                                                    class="mt-2 text-sm text-gray-700"
+                                                    x-html="point.description.content"></div>
                                             </div>
                                         </div>
-                                        <button 
-                                            @click="removePoint(point.id)"
-                                            class="ml-4 text-red-600 hover:text-red-800"
-                                            aria-label="Usuń punkt">
+                                        <button @click="removePoint(point.id)"
+                                            class="ml-4 text-red-600 hover:text-red-800" aria-label="Usuń punkt">
                                             <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                                    d="M6 18L18 6M6 6l12 12" />
                                             </svg>
                                         </button>
                                     </div>
@@ -219,41 +190,32 @@
                         </ul>
                     </template>
                 </div>
-                
+
                 <!-- Interactive Map -->
-                <div x-show="activeView === 'map' || window.innerWidth >= 1024" 
-                     class="lg:w-1/2">
-                    <div id="map" 
-                         class="h-96 lg:h-[600px] rounded-lg shadow-md"
-                         x-init="initMap"></div>
+                <div x-show="activeView === 'map' || window.innerWidth >= 1024" class="lg:w-1/2">
+                    <div id="map" class="h-96 lg:h-[600px] rounded-lg shadow-md" x-init="initMap"></div>
                 </div>
             </div>
-            
+
             <!-- Route Action Bar -->
             <div class="mt-6 flex flex-col sm:flex-row gap-3">
-                <button 
-                    @click="saveRoute"
-                    :disabled="isSaving"
+                <button @click="saveRoute" :disabled="isSaving"
                     class="flex-1 bg-indigo-600 hover:bg-indigo-700 disabled:bg-gray-300 text-white py-3 px-4 rounded-md font-medium">
                     <span x-show="!isSaving">Zapisz trasę</span>
                     <span x-show="isSaving">Zapisywanie...</span>
                 </button>
-                <button 
-                    @click="discardRoute"
+                <button @click="discardRoute"
                     class="flex-1 bg-gray-200 hover:bg-gray-300 text-gray-700 py-3 px-4 rounded-md font-medium">
                     Odrzuć trasę
                 </button>
             </div>
         </div>
     </div>
-    
+
     <!-- Auth Prompt Modal -->
-    <div x-show="showAuthModal" 
-         x-cloak
-         class="fixed inset-0 bg-gray-500 bg-opacity-75 flex items-center justify-center z-50"
-         role="dialog"
-         aria-modal="true"
-         aria-labelledby="modal-title">
+    <div x-show="showAuthModal" x-cloak
+        class="fixed inset-0 bg-gray-500 bg-opacity-75 flex items-center justify-center z-50" role="dialog"
+        aria-modal="true" aria-labelledby="modal-title">
         <div class="bg-white rounded-lg p-6 max-w-md mx-4 shadow-xl">
             <h3 id="modal-title" class="text-lg font-semibold text-gray-900 mb-4">
                 Zaloguj się, aby kontynuować
@@ -262,12 +224,11 @@
                 Aby generować trasy, musisz się zalogować lub utworzyć konto.
             </p>
             <div class="flex space-x-3">
-                <a href="/login" 
-                   class="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white text-center py-2 px-4 rounded-md font-medium">
+                <a href="/login"
+                    class="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white text-center py-2 px-4 rounded-md font-medium">
                     Zaloguj się
                 </a>
-                <button 
-                    @click="showAuthModal = false"
+                <button @click="showAuthModal = false"
                     class="flex-1 bg-gray-200 hover:bg-gray-300 text-gray-700 py-2 px-4 rounded-md font-medium">
                     Zamknij
                 </button>
@@ -276,4 +237,8 @@
     </div>
 </div>
 
+{% endblock %}
+
+{% block extra_scripts %}
+<script src="{% static 'core/js/routeWizard.js' %}"></script>
 {% endblock %}
