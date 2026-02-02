@@ -1,0 +1,98 @@
+[
+  {
+    "model": "core.tag",
+    "pk": 1,
+    "fields": {
+      "name": "Historia",
+      "description": "Miejsca historyczne i muzea",
+      "is_active": true,
+      "priority": 10,
+      "created_at": "2026-02-02T23:36:50.401Z",
+      "updated_at": "2026-02-02T23:36:50.401Z"
+    }
+  },
+  {
+    "model": "core.tag",
+    "pk": 2,
+    "fields": {
+      "name": "Natura",
+      "description": "Parki, ogrody i atrakcje przyrodnicze",
+      "is_active": true,
+      "priority": 10,
+      "created_at": "2026-02-02T23:36:50.410Z",
+      "updated_at": "2026-02-02T23:36:50.410Z"
+    }
+  },
+  {
+    "model": "core.tag",
+    "pk": 3,
+    "fields": {
+      "name": "Kultura",
+      "description": "Teatry, galerie i wydarzenia kulturalne",
+      "is_active": true,
+      "priority": 5,
+      "created_at": "2026-02-02T23:36:50.413Z",
+      "updated_at": "2026-02-02T23:36:50.413Z"
+    }
+  },
+  {
+    "model": "core.tag",
+    "pk": 4,
+    "fields": {
+      "name": "Jedzenie",
+      "description": "Restauracje, kawiarnie i lokalne specjały",
+      "is_active": true,
+      "priority": 5,
+      "created_at": "2026-02-02T23:36:50.415Z",
+      "updated_at": "2026-02-02T23:36:50.415Z"
+    }
+  },
+  {
+    "model": "core.tag",
+    "pk": 5,
+    "fields": {
+      "name": "Rozrywka",
+      "description": "Kina, kluby, parki rozrywki i inne atrakcje",
+      "is_active": true,
+      "priority": 5,
+      "created_at": "2026-02-03T00:41:00.000Z",
+      "updated_at": "2026-02-03T00:41:00.000Z"
+    }
+  },
+  {
+    "model": "core.tag",
+    "pk": 6,
+    "fields": {
+      "name": "Polityka",
+      "description": "Urzędy, miejsca wydarzeń politycznych i historycznych",
+      "is_active": true,
+      "priority": 3,
+      "created_at": "2026-02-03T00:41:00.000Z",
+      "updated_at": "2026-02-03T00:41:00.000Z"
+    }
+  },
+  {
+    "model": "core.tag",
+    "pk": 7,
+    "fields": {
+      "name": "Ludzie",
+      "description": "Miejsca związane ze sławnymi postaciami",
+      "is_active": true,
+      "priority": 4,
+      "created_at": "2026-02-03T00:41:00.000Z",
+      "updated_at": "2026-02-03T00:41:00.000Z"
+    }
+  },
+  {
+    "model": "core.tag",
+    "pk": 8,
+    "fields": {
+      "name": "Ciekawostki",
+      "description": "Lokalne legendy, ukryte miejsca i nietypowe atrakcje",
+      "is_active": true,
+      "priority": 6,
+      "created_at": "2026-02-03T00:43:00.000Z",
+      "updated_at": "2026-02-03T00:43:00.000Z"
+    }
+  }
+]
